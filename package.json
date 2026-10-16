@@ -1,0 +1,128 @@
+{
+  "name": "@clickhouse/clickstack-browser",
+  "version": "0.0.0",
+  "private": false,
+  "description": "OpenTelemetry browser RUM and session replay for ClickStack",
+  "keywords": [
+    "clickhouse",
+    "clickstack",
+    "click",
+    "stack",
+    "opentelemetry",
+    "otel",
+    "rum",
+    "user",
+    "metrics",
+    "session-replay",
+    "session",
+    "replay",
+    "web",
+    "browser"
+  ],
+  "homepage": "https://github.com/ClickHouse/clickstack-browser",
+  "bugs": {
+    "url": "https://github.com/ClickHouse/clickstack-browser/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClickHouse/clickstack-browser.git"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./replay": {
+      "types": "./dist/replay.d.ts",
+      "default": "./dist/replay.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "./dist/clickstack.iife.js",
+  "jsdelivr": "./dist/clickstack.iife.js",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "lint": "eslint --max-warnings 0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --coverage",
+    "test:node": "node --test \"tools/**/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "size": "size-limit",
+    "spell": "cspell lint --no-progress --dot --gitignore \"**\"",
+    "text": "node tools/shared/check-text.mjs",
+    "pack:check": "node -e \"require('node:fs').mkdirSync('pack', { recursive: true })\" && npm pack --pack-destination pack --silent && publint --strict pack/*.tgz && attw --profile esm-only pack/*.tgz",
+    "check": "npm run text && npm run spell && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run test:node && npm run size && npm run pack:check && npm run test:e2e"
+  },
+  "dependencies": {
+    "@opentelemetry/api-logs": "^0.223.0",
+    "@opentelemetry/browser-instrumentation": "^0.8.1",
+    "@opentelemetry/core": "^2.12.0",
+    "@opentelemetry/instrumentation": "^0.223.0",
+    "@opentelemetry/instrumentation-long-task": "^0.67.0",
+    "@opentelemetry/opentelemetry-browser-detector": "^0.223.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-logs": "^0.223.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@rrweb/record": "~2.1.7"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": ">=1.9.1 <1.10.0",
+    "@opentelemetry/browser-sdk": ">=0.4.0 <0.6.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@eslint/js": "10.0.1",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/browser-sdk": "0.4.0",
+    "@opentelemetry/sdk-trace": "2.12.0",
+    "@playwright/test": "1.63.0",
+    "@rrweb/types": "2.1.7",
+    "@size-limit/preset-small-lib": "14.1.0",
+    "@types/node": "24.19.1",
+    "@vitest/browser-playwright": "5.0.3",
+    "@vitest/coverage-v8": "5.0.3",
+    "cspell": "10.3.6",
+    "eslint": "10.12.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-baseline-js": "0.7.4",
+    "eslint-plugin-tsdoc": "0.5.4",
+    "globals": "17.13.0",
+    "playwright": "1.63.0",
+    "prettier": "3.9.9",
+    "publint": "0.3.25",
+    "size-limit": "14.1.0",
+    "tsdown": "0.23.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24.11.0 || >=26.0.0",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.11.0 <12",
+      "onFail": "error"
+    }
+  },
+  "packageManager": "npm@11.19.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
