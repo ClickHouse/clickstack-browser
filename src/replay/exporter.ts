@@ -1,0 +1,270 @@
+import { context, diag, type Attributes, type HrTime } from '@opentelemetry/api';
+import { ExportResultCode, suppressTracing, type ExportResult } from '@opentelemetry/core';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  BatchLogRecordProcessor,
+  LoggerProvider,
+  type LogRecordExporter,
+  type ReadableLogRecord,
+} from '@opentelemetry/sdk-logs';
+
+// Keeps requests far below the collector's default body limit
+const MAX_REQUEST_CHARS = 4 * 1024 * 1024;
+
+// Browsers allow ~64 KiB of in-flight keepalive bodies per page (shared with the RUM exporters)
+const KEEPALIVE_MAX_BYTES = 32 * 1024;
+
+type AnyValue =
+  | { stringValue: string }
+  | { intValue: string }
+  | { doubleValue: number }
+  | { boolValue: boolean }
+  | { arrayValue: { values: AnyValue[] } };
+
+function toAnyValue(value: unknown): AnyValue {
+  if (typeof value === 'number') {
+    // note: OTLP JSON strings for 64-bit ints
+    return Number.isInteger(value) ? { intValue: String(value) } : { doubleValue: value };
+  }
+  if (typeof value === 'boolean') {
+    return { boolValue: value };
+  }
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map(toAnyValue) } };
+  }
+  return { stringValue: String(value) };
+}
+
+function toKeyValues(attributes: Attributes): { key: string; value: AnyValue }[] {
+  return Object.entries(attributes)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => ({ key, value: toAnyValue(value) }));
+}
+
+function toNanoseconds([seconds, nanoseconds]: HrTime): string {
+  return (BigInt(seconds) * 1_000_000_000n + BigInt(nanoseconds)).toString();
+}
+
+/**
+ * Serializes replay records as an OTLP/JSON logs export request.
+ *
+ * @remarks
+ * All records share one resource and one scope since they come from one logger.
+ *
+ * @param records - The records to send, at least one.
+ * @returns The JSON text of the request.
+ * @internal
+ */
+export function toOtlpJson(records: readonly [ReadableLogRecord, ...ReadableLogRecord[]]): string {
+  const [{ resource, instrumentationScope }] = records;
+  return JSON.stringify({
+    resourceLogs: [
+      {
+        resource: { attributes: toKeyValues(resource.attributes) },
+        scopeLogs: [
+          {
+            scope: { name: instrumentationScope.name, version: instrumentationScope.version },
+            logRecords: records.map((record) => ({
+              timeUnixNano: toNanoseconds(record.hrTime),
+              observedTimeUnixNano: toNanoseconds(record.hrTimeObserved),
+              body: toAnyValue(record.body),
+              attributes: toKeyValues(record.attributes as Attributes),
+            })),
+          },
+        ],
+      },
+    ],
+  });
+}
+
+/**
+ * Compresses `data` with the browser's gzip `CompressionStream`.
+ *
+ * @remarks
+ * Reads the output with a reader loop. In Chromium, `new Response(stream).arrayBuffer()` does not
+ * finish while the page is being hidden, which is exactly when the final batch is sent.
+ *
+ * @param data The bytes to compress.
+ * @returns The gzip bytes.
+ * @internal
+ */
+export async function gzip(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  const stream = new CompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+
+  // Not awaited before reading. A large write waits for the reader (for backpressure)
+  const written = writer.write(data).then(() => writer.close());
+  const reader = stream.readable.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+
+  for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    parts.push(read.value);
+    size += read.value.byteLength;
+  }
+
+  await written;
+
+  const result = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.byteLength;
+  }
+
+  return result;
+}
+
+function* bySize(records: readonly ReadableLogRecord[]): Generator<ReadableLogRecord[]> {
+  let group: ReadableLogRecord[] = [];
+  let chars = 0;
+
+  for (const record of records) {
+    // Replay record bodies are always strings.
+    const size = (record.body as string).length;
+
+    if (group.length > 0 && chars + size > MAX_REQUEST_CHARS) {
+      yield group;
+      group = [];
+      chars = 0;
+    }
+
+    group.push(record);
+    chars += size;
+  }
+
+  if (group.length > 0) {
+    yield group;
+  }
+}
+
+/**
+ * Sends replay records as gzip-compressed OTLP/JSON with `fetch`.
+ *
+ * @internal
+ */
+export class ReplayExporter implements LogRecordExporter {
+  readonly #url: string;
+  readonly #headers: Record<string, string>;
+  readonly #pending = new Set<Promise<void>>();
+  #warned = false;
+
+  /**
+   * Creates an exporter for one OTLP logs URL.
+   *
+   * @param url The absolute OTLP/HTTP logs URL.
+   * @param apiKey The ingestion key for the `authorization` header, if any.
+   */
+  constructor(url: string, apiKey: string | undefined) {
+    this.#url = url;
+    this.#headers = {
+      ...(apiKey ? { authorization: apiKey } : {}),
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+    };
+  }
+
+  /**
+   * Sends the records in requests with limited body size.
+   *
+   * @param records The batch from the batch processor.
+   * @param resultCallback Called with success once every request finished. Failures are logged
+   * here once.
+   */
+  export(records: ReadableLogRecord[], resultCallback: (result: ExportResult) => void): void {
+    const sending = this.#send(records)
+      .catch((error: unknown) => {
+        this.#warn(error);
+      })
+      .then(() => {
+        this.#pending.delete(sending);
+
+        resultCallback({ code: ExportResultCode.SUCCESS });
+      });
+
+    this.#pending.add(sending);
+  }
+
+  /** Resolves when every started request has finished */
+  async forceFlush(): Promise<void> {
+    await Promise.all(this.#pending);
+  }
+
+  /** Resolves when every started request has finished */
+  shutdown(): Promise<void> {
+    return this.forceFlush();
+  }
+
+  async #send(records: readonly ReadableLogRecord[]): Promise<void> {
+    for (const [first, ...rest] of bySize(records)) {
+      if (first !== undefined) {
+        await this.#post(await gzip(new TextEncoder().encode(toOtlpJson([first, ...rest]))));
+      }
+    }
+  }
+
+  async #post(body: Uint8Array<ArrayBuffer>): Promise<void> {
+    // The final batch is sent while the page is being hidden, only keepalive requests outlive it.
+    const keepalive = document.visibilityState === 'hidden' && body.byteLength <= KEEPALIVE_MAX_BYTES;
+
+    try {
+      const response = await this.#fetch(body, keepalive).catch((error: unknown) => {
+        // The browser rejects keepalive requests beyond its shared quota.
+        // Without keepalive the request still arrives unless the page is unloading.
+        if (keepalive) {
+          return this.#fetch(body, false);
+        }
+
+        throw error;
+      });
+
+      // An unread body holds the connection and Chromium's keepalive quota until collected.
+      void response.body?.cancel();
+      if (!response.ok) {
+        this.#warn(`HTTP ${String(response.status)}`);
+      }
+    } catch (error) {
+      this.#warn(error);
+    }
+  }
+
+  #fetch(body: Uint8Array<ArrayBuffer>, keepalive: boolean): Promise<Response> {
+    // Set right at the call since context does not survive the awaits before it, and the
+    // upstream fetch instrumentation would otherwise trace this request.
+    return context.with(suppressTracing(context.active()), () =>
+      fetch(this.#url, { method: 'POST', headers: this.#headers, body, keepalive }),
+    );
+  }
+
+  #warn(reason: unknown): void {
+    if (!this.#warned) {
+      this.#warned = true;
+      diag.warn(
+        `@clickhouse/clickstack-browser: replay export to ${new URL(this.#url).host} failed; later failures are not logged`,
+        reason,
+      );
+    }
+  }
+}
+
+/**
+ * Creates the logger provider that batches replay records with the upstream browser batch
+ * processor which also flushes when the page is hidden
+ *
+ * @param url The absolute OTLP/HTTP logs URL.
+ * @param apiKey The ingestion key, if any.
+ * @param resourceAttributes The RUM resource attributes, so replay records carry the same
+ * `service.name` (ClickStack finds a session's replay by it).
+ * @returns The provider. Its `shutdown()` sends what is buffered.
+ * @internal
+ */
+export function createReplayProvider(
+  url: string,
+  apiKey: string | undefined,
+  resourceAttributes: Attributes,
+): LoggerProvider {
+  return new LoggerProvider({
+    resource: defaultResource().merge(resourceFromAttributes(resourceAttributes)),
+    processors: [new BatchLogRecordProcessor({ exporter: new ReplayExporter(url, apiKey) })],
+  });
+}
