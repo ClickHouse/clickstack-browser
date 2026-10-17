@@ -1,16 +1,16 @@
-import { diag } from '@opentelemetry/api';
+import { diag } from "@opentelemetry/api";
 import type {
   Session,
   SessionProvider,
   SessionPublisher,
-} from '@opentelemetry/browser-sdk/session';
-import type { LoggerProvider } from '@opentelemetry/sdk-logs';
-import { record } from '@rrweb/record';
-import type { eventWithTime } from '@rrweb/types';
-import { pageState } from '../internal/global.ts';
-import { ATTR_SESSION_ID } from '../semconv.ts';
-import { VERSION } from '../version.ts';
-import { splitIntoChunks } from './chunker.ts';
+} from "@opentelemetry/browser-sdk/session";
+import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+import { record } from "@rrweb/record";
+import type { eventWithTime } from "@rrweb/types";
+import { pageState } from "../internal/global.ts";
+import { ATTR_SESSION_ID } from "../semconv.ts";
+import { VERSION } from "../version.ts";
+import { splitIntoChunks } from "./chunker.ts";
 import {
   ATTR_RRWEB_CHUNK,
   ATTR_RRWEB_EVENT,
@@ -29,8 +29,8 @@ import {
   SOURCE_MOUSE_MOVE,
   SOURCE_SCROLL,
   SOURCE_TOUCH_MOVE,
-} from './constants.ts';
-import { MutationLimiter } from './limiter.ts';
+} from "./constants.ts";
+import { MutationLimiter } from "./limiter.ts";
 
 // rrweb's own maskAllInputs leaves <input type="hidden"> values.
 // Masking by tag name covers every input type.
@@ -50,6 +50,8 @@ export interface RecorderOptions {
   maskAllText: boolean;
   /** Masks the values of all inputs, such as text areas and selects. Otherwise only passwords. */
   maskAllInputs: boolean;
+  /** Rewrites the page URL in meta events; already guarded, so it never throws. */
+  sanitizeUrl?: ((url: string) => string) | undefined;
 }
 
 /**
@@ -75,7 +77,8 @@ export interface RecorderOptions {
 export class Recorder {
   readonly #sessionManager: SessionProvider & SessionPublisher;
   readonly #provider: LoggerProvider;
-  readonly #logger: ReturnType<LoggerProvider['getLogger']>;
+  readonly #sanitizeUrl: ((url: string) => string) | undefined;
+  readonly #logger: ReturnType<LoggerProvider["getLogger"]>;
   readonly #recordOptions: {
     maskTextSelector?: string;
     maskInputOptions: { password: boolean } | typeof MASK_ALL_INPUTS;
@@ -84,7 +87,7 @@ export class Recorder {
   readonly #limiter = new MutationLimiter(() => {
     this.#onThrottled();
   });
-  #sessionId = '';
+  #sessionId = "";
   #sessionStart = 0;
   #events = 0;
   #offset = 0;
@@ -105,15 +108,18 @@ export class Recorder {
   /**
    * Creates a recorder. Nothing is recorded until {@link Recorder.start}.
    *
-   * @param options The session manager, replay provider, and the masking choices.
+   * @param options - The session manager, replay provider, the masking choices, and the URL rewriter.
    */
   constructor(options: RecorderOptions) {
     this.#sessionManager = options.sessionManager;
     this.#provider = options.provider;
+    this.#sanitizeUrl = options.sanitizeUrl;
     this.#logger = options.provider.getLogger(REPLAY_SCOPE_NAME, VERSION);
     this.#recordOptions = {
-      ...(options.maskAllText ? { maskTextSelector: '*' } : {}),
-      maskInputOptions: options.maskAllInputs ? MASK_ALL_INPUTS : { password: true },
+      ...(options.maskAllText ? { maskTextSelector: "*" } : {}),
+      maskInputOptions: options.maskAllInputs
+        ? MASK_ALL_INPUTS
+        : { password: true },
       // Differentiates user-typed input from values that scripts write
       userTriggeredOnInput: true,
     };
@@ -156,8 +162,8 @@ export class Recorder {
     this.#stopped = true;
 
     this.#reconcile();
-    document.removeEventListener('visibilitychange', this);
-    document.removeEventListener('DOMContentLoaded', this);
+    document.removeEventListener("visibilitychange", this);
+    document.removeEventListener("DOMContentLoaded", this);
     pageState().recording = false;
 
     await this.#provider.shutdown();
@@ -171,7 +177,7 @@ export class Recorder {
     const manager = this.#sessionManager;
 
     this.#enterSession(
-      manager.getSessionId() ?? '',
+      manager.getSessionId() ?? "",
       (manager as { getSession?: () => Session }).getSession?.().startTimestamp,
     );
 
@@ -182,12 +188,12 @@ export class Recorder {
       onSessionEnded: () => undefined,
     });
 
-    document.addEventListener('visibilitychange', this);
+    document.addEventListener("visibilitychange", this);
 
-    if (document.readyState === 'loading') {
+    if (document.readyState === "loading") {
       // On a loading document rrweb takes its first snapshot from its own load listener, outside
       // its error handling; once the document is interactive it takes it inside record()
-      document.addEventListener('DOMContentLoaded', this, { once: true });
+      document.addEventListener("DOMContentLoaded", this, { once: true });
     } else {
       this.#reconcile();
     }
@@ -199,7 +205,8 @@ export class Recorder {
     this.#events = 0;
     this.#offset = 0;
     this.#limiter.reset();
-    this.#capReached = Date.now() - this.#sessionStart > MAX_REPLAY_PER_SESSION_MS;
+    this.#capReached =
+      Date.now() - this.#sessionStart > MAX_REPLAY_PER_SESSION_MS;
   }
 
   #onSessionStarted(session: Session): void {
@@ -208,7 +215,7 @@ export class Recorder {
     }
 
     this.#enterSession(session.id, session.startTimestamp);
-    this.#waitingForVisible = document.visibilityState !== 'visible';
+    this.#waitingForVisible = document.visibilityState !== "visible";
     this.#waitingForInput = !this.#waitingForVisible;
     this.#needsSnapshot = true;
     this.#reconcile();
@@ -227,7 +234,6 @@ export class Recorder {
         },
         errorHandler: (error) => this.#onRrwebError(error),
       });
-
     } else if (!shouldRun && this.#stopRrweb !== undefined) {
       const stop = this.#stopRrweb;
 
@@ -303,7 +309,11 @@ export class Recorder {
       return;
     }
 
-    const kept = this.#limiter.filter(event, (id) => record.mirror.getNode(id), performance.now());
+    const kept = this.#limiter.filter(
+      event,
+      (id) => record.mirror.getNode(id),
+      performance.now(),
+    );
 
     if (kept !== undefined) {
       this.#send(kept);
@@ -311,7 +321,15 @@ export class Recorder {
   }
 
   #send(event: eventWithTime): void {
-    const chunks = splitIntoChunks(JSON.stringify(event));
+    const sanitizeUrl = this.#sanitizeUrl;
+    const recorded =
+      event.type === EVENT_META && sanitizeUrl !== undefined
+        ? {
+            ...event,
+            data: { ...event.data, href: sanitizeUrl(event.data.href) },
+          }
+        : event;
+    const chunks = splitIntoChunks(JSON.stringify(recorded));
     const eventNumber = ++this.#events;
 
     chunks.forEach((body, index) => {
@@ -330,7 +348,9 @@ export class Recorder {
   }
 
   #onThrottled(): void {
-    this.#warnOnce('replay drops attribute changes of nodes that change too often');
+    this.#warnOnce(
+      "replay drops attribute changes of nodes that change too often",
+    );
 
     // One full snapshot a second after the last drop restores what the dropped changes left out
     clearTimeout(this.#snapshotTimer);
@@ -340,7 +360,7 @@ export class Recorder {
   }
 
   #onRrwebError(error: unknown): boolean {
-    this.#warnOnce('rrweb failed', error);
+    this.#warnOnce("rrweb failed", error);
 
     // True makes rrweb eat the error, otherwise it reaches the page and the errors
     // instrumentation records it as an application error.
@@ -358,12 +378,15 @@ export class Recorder {
    * Handles `visibilitychange` and `DOMContentLoaded` on the document. The recorder is its own
    * listener object, so shutdown removes both by the same reference.
    *
-   * @param event The document event.
+   * @param event - The document event.
    */
   handleEvent(event: Event): void {
-    if (event.type === 'DOMContentLoaded') {
+    if (event.type === "DOMContentLoaded") {
       this.#reconcile();
-    } else if (this.#waitingForVisible && document.visibilityState === 'visible') {
+    } else if (
+      this.#waitingForVisible &&
+      document.visibilityState === "visible"
+    ) {
       this.#waitingForVisible = false;
       this.#requestSnapshot();
     }
@@ -394,11 +417,14 @@ function isFromBlockedFrame(event: eventWithTime): boolean {
     (data.texts?.[0] ?? data.attributes?.[0])?.id;
 
   for (
-    let node: Node | null | undefined = id === undefined ? null : record.mirror.getNode(id);
+    let node: Node | null | undefined =
+      id === undefined ? null : record.mirror.getNode(id);
     node;
     node = (node.ownerDocument ?? (node as Document)).defaultView?.frameElement
   ) {
-    const meta = record.mirror.getMeta(node) as { attributes?: { rr_width?: unknown } } | null;
+    const meta = record.mirror.getMeta(node) as {
+      attributes?: { rr_width?: unknown };
+    } | null;
 
     if (meta?.attributes?.rr_width !== undefined) {
       return true;

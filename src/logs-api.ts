@@ -1,1 +1,1 @@
-export { logs } from '@opentelemetry/api-logs';
+export { logs } from "@opentelemetry/api-logs";

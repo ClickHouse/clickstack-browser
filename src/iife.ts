@@ -6,17 +6,21 @@
  * @packageDocumentation
  */
 
-import { context, trace } from '@opentelemetry/api';
-import { logs } from './logs-api.ts';
+import { context, trace } from "@opentelemetry/api";
+import { logs } from "./logs-api.ts";
 
-export * from './index.ts';
+export * from "./index.ts";
 
 /**
  * The OpenTelemetry API instances the SDK registers with.
  *
  * @public
  */
-export const otel: { trace: typeof trace; context: typeof context; logs: typeof logs } = {
+export const otel: {
+  trace: typeof trace;
+  context: typeof context;
+  logs: typeof logs;
+} = {
   trace,
   context,
   logs,

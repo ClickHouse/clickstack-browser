@@ -1,10 +1,14 @@
-import { diag, type Attributes } from '@opentelemetry/api';
-import type { SessionProvider, SessionPublisher } from '@opentelemetry/browser-sdk/session';
-import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
-import { signalUrl } from '../internal/endpoints.ts';
-import { pageState } from '../internal/global.ts';
-import { createReplayProvider } from './exporter.ts';
-import { Recorder } from './recorder.ts';
+import { diag, type Attributes } from "@opentelemetry/api";
+import type {
+  SessionProvider,
+  SessionPublisher,
+} from "@opentelemetry/browser-sdk/session";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { signalUrl } from "../internal/endpoints.ts";
+import { pageState } from "../internal/global.ts";
+import { guardSanitizeUrl } from "../rum/sanitize-url.ts";
+import { createReplayProvider } from "./exporter.ts";
+import { Recorder } from "./recorder.ts";
 
 /**
  * Options of {@link startReplay}.
@@ -35,6 +39,12 @@ export interface ReplayStartOptions {
   maskAllText?: boolean | undefined;
   /** Masks the values of all inputs/text areas/selects. When set to false only passwords are masked. Default: `true`. */
   maskAllInputs?: boolean | undefined;
+  /**
+   * Rewrites the page URL recorded in replay meta events, for example to drop tokens from the
+   * query string. Pass the same function as to the instrumentations' `sanitizeUrl`. A throw or a
+   * non-string result records an empty URL. Default: none.
+   */
+  sanitizeUrl?: ((url: string) => string) | undefined;
 }
 
 /**
@@ -83,19 +93,20 @@ const NOT_RECORDING: ReplayController = {
  * const replay = startReplay({ sessionManager, endpoint: '/otel', serviceName: 'web-shop' });
  * ```
  *
- * @param options The session manager, the endpoint, the service name and the masking choices.
+ * @param options - The session manager, the endpoint, the service name, the masking choices and the
+ * URL rewriter.
  * @returns A controller, or a no-op one when nothing is recorded.
  * @public
  */
 export function startReplay(options: ReplayStartOptions): ReplayController {
-  if (typeof document === 'undefined') {
+  if (typeof document === "undefined") {
     return NOT_RECORDING;
   }
 
-  const url = signalUrl(options.endpoint, 'logs');
+  const url = signalUrl(options.endpoint, "logs");
   if (url === undefined || pageState().recording) {
     diag.warn(
-      '@clickhouse/clickstack-browser: replay not started: the endpoint is not an http(s) URL, or a recording already runs on this page',
+      "@clickhouse/clickstack-browser: replay not started: the endpoint is not an http(s) URL, or a recording already runs on this page",
     );
 
     return NOT_RECORDING;
@@ -109,6 +120,9 @@ export function startReplay(options: ReplayStartOptions): ReplayController {
     }),
     maskAllText: options.maskAllText ?? true,
     maskAllInputs: options.maskAllInputs ?? true,
+    sanitizeUrl: options.sanitizeUrl
+      ? guardSanitizeUrl(options.sanitizeUrl)
+      : undefined,
   });
 
   recorder.start();

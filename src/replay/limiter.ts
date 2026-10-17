@@ -1,5 +1,5 @@
-import type { eventWithTime } from '@rrweb/types';
-import { EVENT_INCREMENTAL_SNAPSHOT, SOURCE_MUTATION } from './constants.ts';
+import type { eventWithTime } from "@rrweb/types";
+import { EVENT_INCREMENTAL_SNAPSHOT, SOURCE_MUTATION } from "./constants.ts";
 
 const BUCKET_SIZE = 100;
 const REFILL_PER_MS = 10 / 1000;
@@ -24,7 +24,7 @@ export class MutationLimiter {
   /**
    * Creates a limiter with every bucket full.
    *
-   * @param onBlocked Called whenever a mutation is dropped, so the recorder can schedule a full
+   * @param onBlocked - Called whenever a mutation is dropped, so the recorder can schedule a full
    * snapshot that repairs the dropped state.
    */
   constructor(onBlocked: () => void) {
@@ -34,9 +34,9 @@ export class MutationLimiter {
   /**
    * Applies the limit to one rrweb event without mutating it.
    *
-   * @param event The event rrweb emitted.
-   * @param getNode Looks up the live node of an rrweb mirror ID.
-   * @param now The current time in milliseconds.
+   * @param event - The event rrweb emitted.
+   * @param getNode - Looks up the live node of an rrweb mirror ID.
+   * @param now - The current time in milliseconds.
    * @returns A copy of the event without the dropped attribute mutations, or `undefined` when nothing
    * is left of it.
    */
@@ -45,7 +45,10 @@ export class MutationLimiter {
     getNode: (id: number) => Node | null,
     now: number,
   ): eventWithTime | undefined {
-    if (event.type !== EVENT_INCREMENTAL_SNAPSHOT || event.data.source !== SOURCE_MUTATION) {
+    if (
+      event.type !== EVENT_INCREMENTAL_SNAPSHOT ||
+      event.data.source !== SOURCE_MUTATION
+    ) {
       return event;
     }
 
@@ -53,7 +56,10 @@ export class MutationLimiter {
     const kept = attributes.filter((mutation) => {
       const node = getNode(mutation.id);
 
-      return node === null || this.#take((node as Element).closest('svg') ?? node, now);
+      return (
+        node === null ||
+        this.#take((node as Element).closest("svg") ?? node, now)
+      );
     });
 
     if (kept.length === attributes.length) {
@@ -76,7 +82,10 @@ export class MutationLimiter {
 
   #take(key: Node, now: number): boolean {
     const bucket = this.#buckets.get(key) ?? { tokens: BUCKET_SIZE, at: now };
-    bucket.tokens = Math.min(BUCKET_SIZE, bucket.tokens + (now - bucket.at) * REFILL_PER_MS);
+    bucket.tokens = Math.min(
+      BUCKET_SIZE,
+      bucket.tokens + (now - bucket.at) * REFILL_PER_MS,
+    );
     bucket.at = now;
     this.#buckets.set(key, bucket);
 

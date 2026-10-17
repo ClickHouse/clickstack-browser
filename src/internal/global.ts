@@ -11,7 +11,7 @@ export interface PageState {
   recording?: boolean;
 }
 
-const KEY = Symbol.for('@clickhouse/clickstack-browser');
+const KEY = Symbol.for("@clickhouse/clickstack-browser");
 
 /**
  * Returns the page-wide flags, creating them on first use.

@@ -4,5 +4,5 @@
  * @packageDocumentation
  */
 
-export { startReplay } from './replay/start.ts';
-export type { ReplayController, ReplayStartOptions } from './replay/start.ts';
+export { startReplay } from "./replay/start.ts";
+export type { ReplayController, ReplayStartOptions } from "./replay/start.ts";

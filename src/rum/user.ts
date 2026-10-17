@@ -1,13 +1,13 @@
-import type { Attributes } from '@opentelemetry/api';
-import type { LogRecordProcessor } from '@opentelemetry/sdk-logs';
-import type { SpanProcessor } from '@opentelemetry/sdk-trace';
+import type { Attributes } from "@opentelemetry/api";
+import type { LogRecordProcessor } from "@opentelemetry/sdk-logs";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace";
 import {
   ATTR_USER_EMAIL,
   ATTR_USER_FULL_NAME,
   ATTR_USER_ID,
   ATTR_USER_NAME,
   ATTR_USER_ROLES,
-} from '../semconv.ts';
+} from "../semconv.ts";
 
 /**
  * The signed-in user, recorded with the standard `user.*` attributes.
@@ -33,7 +33,7 @@ let userAttributes: Attributes = {};
  * Sets the user recorded on every span and log record emitted from now on, replacing the previous
  * user. Works before `init`. Replay records carry no user attributes.
  *
- * @param user The user, or `null` to stop recording user attributes. Empty fields are left out.
+ * @param user - The user, or `null` to stop recording user attributes. Empty fields are left out.
  * @public
  */
 export function setUser(user: User | null): void {

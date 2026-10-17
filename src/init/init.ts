@@ -1,21 +1,21 @@
-import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 import {
   ConsoleInstrumentation,
   type ConsoleMethod,
-} from '@opentelemetry/browser-instrumentation/experimental/console';
-import { ErrorsInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/errors';
-import { FetchInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/fetch';
-import { NavigationInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/navigation';
-import { NavigationTimingInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/navigation-timing';
-import { UserActionInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/user-action';
-import { WebVitalsInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/web-vitals';
-import { XhrInstrumentation } from '@opentelemetry/browser-instrumentation/experimental/xhr';
-import { startBrowserSdk, type WebSdk } from '@opentelemetry/browser-sdk';
+} from "@opentelemetry/browser-instrumentation/experimental/console";
+import { ErrorsInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/errors";
+import { FetchInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/fetch";
+import { NavigationInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/navigation";
+import { NavigationTimingInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/navigation-timing";
+import { UserActionInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/user-action";
+import { WebVitalsInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/web-vitals";
+import { XhrInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/xhr";
+import { startBrowserSdk, type WebSdk } from "@opentelemetry/browser-sdk";
 import {
   createDocumentLogRecordProcessor,
   createDocumentSpanProcessor,
   createLocationDocumentProvider,
-} from '@opentelemetry/browser-sdk/document';
+} from "@opentelemetry/browser-sdk/document";
 import {
   createDefaultSessionIdGenerator,
   createLocalStorageSessionStore,
@@ -24,22 +24,27 @@ import {
   createSessionSpanProcessor,
   type SessionManager,
   type SessionStore,
-} from '@opentelemetry/browser-sdk/session';
-import { registerInstrumentations } from '@opentelemetry/instrumentation';
-import { LongTaskInstrumentation } from '@opentelemetry/instrumentation-long-task';
-import { browserDetector } from '@opentelemetry/opentelemetry-browser-detector';
-import { detectResources } from '@opentelemetry/resources';
+} from "@opentelemetry/browser-sdk/session";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
+import { browserDetector } from "@opentelemetry/opentelemetry-browser-detector";
+import { detectResources } from "@opentelemetry/resources";
 import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
   ATTR_SERVICE_NAME,
   ATTR_TELEMETRY_DISTRO_NAME,
   ATTR_TELEMETRY_DISTRO_VERSION,
-} from '@opentelemetry/semantic-conventions';
-import { signalUrl } from '../internal/endpoints.ts';
-import { pageState } from '../internal/global.ts';
-import { createReplayProvider } from '../replay/exporter.ts';
-import { Recorder } from '../replay/recorder.ts';
-import { userLogRecordProcessor, userSpanProcessor } from '../rum/user.ts';
-import { VERSION } from '../version.ts';
+} from "@opentelemetry/semantic-conventions";
+import { signalUrl } from "../internal/endpoints.ts";
+import { pageState } from "../internal/global.ts";
+import { createReplayProvider } from "../replay/exporter.ts";
+import { Recorder } from "../replay/recorder.ts";
+import {
+  createUrlSanitizerLogRecordProcessor,
+  guardSanitizeUrl,
+} from "../rum/sanitize-url.ts";
+import { userLogRecordProcessor, userSpanProcessor } from "../rum/user.ts";
+import { VERSION } from "../version.ts";
 
 /**
  * How much of the console is captured as `browser.console` log events. Each level includes the
@@ -47,13 +52,13 @@ import { VERSION } from '../version.ts';
  *
  * @public
  */
-export type ConsoleLevel = 'error' | 'warn' | 'info' | 'debug';
+export type ConsoleLevel = "error" | "warn" | "info" | "debug";
 
 const CONSOLE_METHODS: Record<ConsoleLevel, ConsoleMethod[]> = {
-  error: ['error'],
-  warn: ['error', 'warn'],
-  info: ['error', 'warn', 'info', 'log'],
-  debug: ['error', 'warn', 'info', 'log', 'debug'],
+  error: ["error"],
+  warn: ["error", "warn"],
+  info: ["error", "warn", "info", "log"],
+  debug: ["error", "warn", "info", "log", "debug"],
 };
 
 /**
@@ -75,6 +80,11 @@ export interface ClickStackBrowserOptions {
   /** `service.name` of every span, log record and replay record. */
   serviceName: string;
   /**
+   * Deployment environment, such as `production` or `staging`, recorded as the resource attribute
+   * `deployment.environment.name`. Default: none.
+   */
+  environment?: string | undefined;
+  /**
    * Backend origins, such as `https://example-api.clickhouse.com`, whose fetch and XHR requests carry W3C
    * trace context headers so backend traces join the browser's. Same-origin requests always
    * carry them. A regular expression is matched against the full request URL. Each backend must
@@ -85,6 +95,13 @@ export interface ClickStackBrowserOptions {
   replay?: boolean | undefined;
   /** Console level captured as log events, or `false` for none. Default: `'error'`. */
   console?: ConsoleLevel | false | undefined;
+  /**
+   * Rewrites every URL before it is recorded, for example to remove tokens from query strings. It
+   * applies to the page URL on spans and logs, fetch and XHR spans, navigation events, navigation
+   * and resource timing events, and the page URL in the replay. A hook that throws or returns a
+   * non-string records an empty URL. Default: none, URLs are recorded as they are.
+   */
+  sanitizeUrl?: ((url: string) => string) | undefined;
 }
 
 interface Run {
@@ -118,18 +135,18 @@ const run: Run = { sessionId: null, replayPaused: false };
  * init({ endpoint: '/otel', serviceName: 'my-web-app', traceOrigins: ['https://example-api.clickhouse.com'] });
  * ```
  *
- * @param options The endpoint, the service name, and the few choices this package offers.
+ * @param options - The endpoint, the service name, and the few choices this package offers.
  * @public
  */
 export function init(options: ClickStackBrowserOptions): void {
-  if (typeof document === 'undefined') {
+  if (typeof document === "undefined") {
     return;
   }
 
   const page = pageState();
   if (page.initialized) {
     diag.warn(
-      '@clickhouse/clickstack-browser: init already ran on this page; this call is ignored',
+      "@clickhouse/clickstack-browser: init already ran on this page; this call is ignored",
     );
 
     return;
@@ -137,19 +154,25 @@ export function init(options: ClickStackBrowserOptions): void {
 
   page.initialized = true;
 
-  const tracesUrl = signalUrl(options.endpoint, 'traces');
-  const logsUrl = signalUrl(options.endpoint, 'logs');
+  const tracesUrl = signalUrl(options.endpoint, "traces");
+  const logsUrl = signalUrl(options.endpoint, "logs");
 
-  if (tracesUrl === undefined || logsUrl === undefined || !options.serviceName) {
+  if (
+    tracesUrl === undefined ||
+    logsUrl === undefined ||
+    !options.serviceName
+  ) {
     // The SDK (which installs the diagnostics logger) does not start on this path
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
-    diag.error('@clickhouse/clickstack-browser: init needs an http(s) endpoint and a serviceName');
+    diag.error(
+      "@clickhouse/clickstack-browser: init needs an http(s) endpoint and a serviceName",
+    );
 
     return;
   }
 
   run.started = start(options, tracesUrl, logsUrl).catch((error: unknown) => {
-    diag.error('@clickhouse/clickstack-browser: init failed', error);
+    diag.error("@clickhouse/clickstack-browser: init failed", error);
   });
 }
 
@@ -171,7 +194,7 @@ async function start(
   // Loaded on demand because the module reads `window` when imported, which breaks server-side
   // imports of this package.
   const { ResourceTimingInstrumentation } =
-    await import('@opentelemetry/browser-instrumentation/experimental/resource-timing');
+    await import("@opentelemetry/browser-instrumentation/experimental/resource-timing");
   if (run.stopping !== undefined) {
     return;
   }
@@ -184,45 +207,74 @@ async function start(
     onSessionEnded: () => undefined,
   });
 
-  const headers: Record<string, string> = options.apiKey ? { authorization: options.apiKey } : {};
+  const headers: Record<string, string> = options.apiKey
+    ? { authorization: options.apiKey }
+    : {};
   const resourceAttributes = {
     ...detectResources({ detectors: [browserDetector] }).attributes,
-    [ATTR_TELEMETRY_DISTRO_NAME]: 'clickstack-browser',
+    [ATTR_TELEMETRY_DISTRO_NAME]: "clickstack-browser",
     [ATTR_TELEMETRY_DISTRO_VERSION]: VERSION,
     [ATTR_SERVICE_NAME]: options.serviceName,
+    ...(options.environment
+      ? { [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: options.environment }
+      : {}),
   };
+  const sanitizeUrl = options.sanitizeUrl
+    ? guardSanitizeUrl(options.sanitizeUrl)
+    : undefined;
+  const sanitize = sanitizeUrl ? { sanitizeUrl } : {};
 
   // The exporters' own requests must not become telemetry.
   const ignoreUrls = [tracesUrl, logsUrl];
-  const propagateTraceHeaderCorsUrls = (options.traceOrigins ?? []).map(toUrlPattern);
-  const consoleLevel = options.console ?? 'error';
+  const propagateTraceHeaderCorsUrls = (options.traceOrigins ?? []).map(
+    toUrlPattern,
+  );
+  const consoleLevel = options.console ?? "error";
 
   // Constructed disabled: an enabled instrumentation starts in its constructor before the SDK's
   // providers exist and loses its first events (such as the initial navigation)
   const instrumentations = [
-    new FetchInstrumentation({ enabled: false, ignoreUrls, propagateTraceHeaderCorsUrls }),
-    new XhrInstrumentation({ enabled: false, ignoreUrls, propagateTraceHeaderCorsUrls }),
+    new FetchInstrumentation({
+      enabled: false,
+      ignoreUrls,
+      propagateTraceHeaderCorsUrls,
+      ...sanitize,
+    }),
+    new XhrInstrumentation({
+      enabled: false,
+      ignoreUrls,
+      propagateTraceHeaderCorsUrls,
+      ...sanitize,
+    }),
     new ResourceTimingInstrumentation({ enabled: false, ignoreUrls }),
     new ErrorsInstrumentation({ enabled: false }),
-    new NavigationInstrumentation({ enabled: false }),
+    new NavigationInstrumentation({ enabled: false, ...sanitize }),
     new NavigationTimingInstrumentation({ enabled: false }),
     new UserActionInstrumentation({ enabled: false }),
     new WebVitalsInstrumentation({ enabled: false }),
     new LongTaskInstrumentation({ enabled: false }),
     ...(consoleLevel
-      ? [new ConsoleInstrumentation({ enabled: false, logMethods: CONSOLE_METHODS[consoleLevel] })]
+      ? [
+          new ConsoleInstrumentation({
+            enabled: false,
+            logMethods: CONSOLE_METHODS[consoleLevel],
+          }),
+        ]
       : []),
   ];
 
-  const documentProvider = createLocationDocumentProvider();
+  const documentProvider = createLocationDocumentProvider(sanitize);
   run.sdk = startBrowserSdk({
-    logLevel: 'WARN',
+    logLevel: "WARN",
     resourceAttributes,
     logs: {
       processors: [
         createSessionLogRecordProcessor(sessionManager),
         createDocumentLogRecordProcessor(documentProvider),
         userLogRecordProcessor,
+        ...(sanitizeUrl
+          ? [createUrlSanitizerLogRecordProcessor(sanitizeUrl)]
+          : []),
       ],
       exportConfig: { url: logsUrl, headers },
     },
@@ -240,9 +292,14 @@ async function start(
   if (options.replay !== false && pageState().recording !== true) {
     run.recorder = new Recorder({
       sessionManager,
-      provider: createReplayProvider(logsUrl, options.apiKey, resourceAttributes),
+      provider: createReplayProvider(
+        logsUrl,
+        options.apiKey,
+        resourceAttributes,
+      ),
       maskAllText: true,
       maskAllInputs: true,
+      sanitizeUrl,
     });
 
     if (run.replayPaused) {
@@ -280,7 +337,9 @@ function toUrlPattern(origin: string | RegExp): RegExp {
   if (origin instanceof RegExp) {
     return origin;
   }
-  const escaped = origin.replace(/\/+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = origin
+    .replace(/\/+$/, "")
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`^${escaped}(?:[/?#]|$)`);
 }
 
@@ -345,7 +404,7 @@ async function stop(): Promise<void> {
 
     await run.sdk?.shutdown();
   } catch (error) {
-    diag.warn('@clickhouse/clickstack-browser: shutdown failed', error);
+    diag.warn("@clickhouse/clickstack-browser: shutdown failed", error);
   }
 
   run.sessionManager?.shutdown();
