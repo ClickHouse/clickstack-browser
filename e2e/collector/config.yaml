@@ -1,0 +1,36 @@
+# The collector of the end-to-end test. global-setup.ts runs it in Docker with the fixture page
+# origin and the ingestion key in the environment, and the test reads the file it writes.
+
+extensions:
+  bearertokenauth:
+    scheme: ""
+    token: ${env:E2E_API_KEY}
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
+        cors:
+          allowed_origins: ["${env:E2E_PAGE_ORIGIN}"]
+          allowed_headers: ["*"]
+
+exporters:
+  file:
+    path: /output/logs.jsonl
+    flush_interval: 10ms
+
+service:
+  extensions: [bearertokenauth]
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [file]
+    traces:
+      receivers: [otlp]
+      exporters: [file]

@@ -172,12 +172,12 @@ test("with masking turned off only passwords stay masked", async () => {
 
 test("passes the page URL in the meta event through sanitizeUrl", async () => {
   const h = await started({
-    sanitizeUrl: () => "https://example.com/sanitized",
+    sanitizeUrl: () => "https://example.clickhouse.com/sanitized",
   });
 
   expect(JSON.parse(h.records[0]?.body as string)).toMatchObject({
     type: 4,
-    data: { href: "https://example.com/sanitized" },
+    data: { href: "https://example.clickhouse.com/sanitized" },
   });
   expect(bodies(h.records)).not.toContain(location.href);
 });

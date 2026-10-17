@@ -25,12 +25,12 @@ test("the guard returns the hook result, or an empty URL when the hook fails", (
       : url.replace(/\?.*/, "");
   });
 
-  expect(sanitize("https://example.com/a?token=1")).toBe(
-    "https://example.com/a",
+  expect(sanitize("https://example.clickhouse.com/a?token=1")).toBe(
+    "https://example.clickhouse.com/a",
   );
-  expect(sanitize("https://example.com/throw")).toBe("");
-  expect(sanitize("https://example.com/throw")).toBe("");
-  expect(sanitize("https://example.com/number")).toBe("");
+  expect(sanitize("https://example.clickhouse.com/throw")).toBe("");
+  expect(sanitize("https://example.clickhouse.com/throw")).toBe("");
+  expect(sanitize("https://example.clickhouse.com/number")).toBe("");
   expect(warn).toHaveBeenCalledOnce();
 });
 
@@ -39,7 +39,7 @@ test("the processor rewrites url.full on timing events only", () => {
   const provider = new LoggerProvider({
     processors: [
       createUrlSanitizerLogRecordProcessor(
-        () => "https://example.com/sanitized",
+        () => "https://example.clickhouse.com/sanitized",
       ),
       {
         onEmit: (r) => records.push(r),
@@ -49,7 +49,7 @@ test("the processor rewrites url.full on timing events only", () => {
     ],
   });
   const logger = provider.getLogger("test");
-  const attributes = { "url.full": "https://example.com/a?token=1" };
+  const attributes = { "url.full": "https://example.clickhouse.com/a?token=1" };
 
   logger.emit({ eventName: "browser.resource_timing", attributes });
   logger.emit({ eventName: "browser.navigation_timing", attributes });
@@ -57,9 +57,9 @@ test("the processor rewrites url.full on timing events only", () => {
   logger.emit({ attributes });
 
   expect(records.map((r) => r.attributes["url.full"])).toEqual([
-    "https://example.com/sanitized",
-    "https://example.com/sanitized",
-    "https://example.com/a?token=1",
-    "https://example.com/a?token=1",
+    "https://example.clickhouse.com/sanitized",
+    "https://example.clickhouse.com/sanitized",
+    "https://example.clickhouse.com/a?token=1",
+    "https://example.clickhouse.com/a?token=1",
   ]);
 });

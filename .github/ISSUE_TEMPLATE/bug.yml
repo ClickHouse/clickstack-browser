@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in @clickhouse/clickstack-browser does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal page or repository, the init options (without keys), and the steps.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      options:
+        - npm (bundler)
+        - Script tag (IIFE)
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 133 on macOS 15
+    validations:
+      required: true
+  - type: input
+    id: clickstack
+    attributes:
+      label: ClickStack version
+      description: Self-hosted image tag, or "ClickHouse Cloud".
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics
+      description: Browser console warnings and errors, with keys and personal data removed.
+      render: text
