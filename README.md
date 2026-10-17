@@ -33,7 +33,11 @@ allows it:
 
 ```js
 // telemetry.js
-ClickStack.init({ endpoint: "/otel", serviceName: "example-app" });
+ClickStack.init({
+  endpoint: "https://example-collector.clickhouse.com:4318",
+  apiKey: "<YOUR_INGESTION_API_KEY>",
+  serviceName: "example-app",
+});
 ```
 
 Use an exact version with the `integrity` hash from that version's release notes. The global also
@@ -45,18 +49,22 @@ has `ClickStack.otel` (`trace`, `context`, `logs`) for your own spans and log re
 import { init } from "@clickhouse/clickstack-browser";
 
 init({
-  endpoint: "/otel",
+  endpoint: "https://example-collector.clickhouse.com:4318",
+  apiKey: "<YOUR_INGESTION_API_KEY>",
   serviceName: "example-app",
   traceOrigins: ["https://example-api.clickhouse.com"],
 });
 ```
+
+`endpoint` is the OTLP HTTP address of your OpenTelemetry collector (port 4318), the same value as
+`OTEL_EXPORTER_OTLP_ENDPOINT`, without `/v1/traces`. With ClickStack, it is your service's collector URL.
 
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
 in Next.js, `src/main.ts` in Vite), not in a component effect.
 
 | Option         | Default   | Meaning                                                                                                                                                                                                   |
 | -------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`     | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel`. `/v1/traces` and `/v1/logs` are appended.                                                                                     |
+| `endpoint`     | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
 | `serviceName`  | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
 | `environment`  | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
 | `apiKey`       | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
@@ -132,9 +140,9 @@ import {
 } from "@opentelemetry/browser-sdk/session";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
 
-// The upstream SDK accepts only absolute export URLs.
-const tracesUrl = new URL("/otel/v1/traces", location.href).href;
-const logsUrl = new URL("/otel/v1/logs", location.href).href;
+const endpoint = "https://example-collector.clickhouse.com:4318";
+const tracesUrl = `${endpoint}/v1/traces`;
+const logsUrl = `${endpoint}/v1/logs`;
 
 const sessionManager = createSessionManager({
   sessionIdGenerator: createDefaultSessionIdGenerator(),
@@ -168,7 +176,7 @@ registerInstrumentations({
 
 const replay = startReplay({
   sessionManager,
-  endpoint: "/otel",
+  endpoint,
   serviceName: "example-app",
 });
 ```
@@ -202,8 +210,9 @@ const replay = startReplay({
 - `init` returns at once and starts in the background, so telemetry from the same tick, such as an
   immediate `fetch`, is not captured. Calls to `setUser`, `pauseReplay` and `resumeReplay` before
   `init` are kept. Only the first `init` on a page counts.
-- Telemetry is sent in batches, and when the page is hidden. Browsers limit what a closing page can still send to
-  64 KiB in total, so the last part of a long replay can be lost when the user leaves.
+- Telemetry is sent in batches, and when the page is hidden. Browsers limit what a closing page
+  can still send to 64 KiB in total, so the last part of a long replay can be lost when the user
+  leaves.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 

@@ -41,7 +41,8 @@ HyperDX.setGlobalAttributes({ userId: user.id, userEmail: user.email });
 import { init, setUser } from "@clickhouse/clickstack-browser";
 
 init({
-  endpoint: "/otel",
+  endpoint: "https://example-collector.clickhouse.com:4318",
+  apiKey: "<ingestion key>",
   serviceName: "example-app",
   traceOrigins: ["https://example-api.clickhouse.com"],
   console: "debug",

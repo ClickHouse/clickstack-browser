@@ -68,7 +68,7 @@ const CONSOLE_METHODS: Record<ConsoleLevel, ConsoleMethod[]> = {
  */
 export interface ClickStackBrowserOptions {
   /**
-   * OTLP/HTTP base URL of the collector, for example `https://example.clickhouse.com:4318`, or a
+   * OTLP/HTTP base URL of the collector, for example `https://example-collector.clickhouse.com:4318`, or a
    * same-origin proxy path such as `/otel`. `/v1/traces` and `/v1/logs` are appended to its path,
    * and a relative value resolves against the page URL.
    */
@@ -132,7 +132,7 @@ const run: Run = { sessionId: null, replayPaused: false };
  *
  * @example
  * ```ts
- * init({ endpoint: '/otel', serviceName: 'my-web-app', traceOrigins: ['https://example-api.clickhouse.com'] });
+ * init({ endpoint: 'https://example-collector.clickhouse.com:4318', serviceName: 'example-app' });
  * ```
  *
  * @param options - The endpoint, the service name, and the few choices this package offers.

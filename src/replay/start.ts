@@ -90,7 +90,7 @@ const NOT_RECORDING: ReplayController = {
  * });
  * await sessionManager.start();
  * // Start the SDK with startBrowserSdk, giving its session processors `sessionManager`.
- * const replay = startReplay({ sessionManager, endpoint: '/otel', serviceName: 'web-shop' });
+ * const replay = startReplay({ sessionManager, endpoint: 'https://example-collector.clickhouse.com:4318', serviceName: 'example-app' });
  * ```
  *
  * @param options - The session manager, the endpoint, the service name, the masking choices and the
