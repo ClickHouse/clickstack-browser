@@ -93,7 +93,7 @@ for the replay:
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Separate traces and logs URLs, or extra request headers | `exportConfig.url` and `exportConfig.headers` per signal in `startBrowserSdk`                                |
 | Other resource attributes, such as `service.version`    | `resourceAttributes` in `startBrowserSdk`, and the same in `startReplay`                                     |
-| Instrumentation settings, or other instrumentations     | Construct the instrumentations yourself and pass them to `registerInstrumentations`                          |
+| Instrumentation settings, or other instrumentations     | Construct the instrumentations yourself and pass them to `instrumentations` in `startBrowserSdk`             |
 | Ignored URLs                                            | `ignoreUrls` of the fetch, XHR and resource timing instrumentations                                          |
 | Request and response headers                            | `applyCustomAttributesOnSpan` of the fetch and XHR instrumentations; record an allowlist, never every header |
 | Sampling                                                | `traces.sampler` in `startBrowserSdk`; call `startReplay` only in the sessions you want to record            |

@@ -23,7 +23,6 @@ export default defineConfig({
       "@opentelemetry/browser-sdk/document",
       "@opentelemetry/browser-sdk/session",
       "@opentelemetry/core",
-      "@opentelemetry/instrumentation",
       "@opentelemetry/instrumentation-long-task",
       "@opentelemetry/opentelemetry-browser-detector",
       "@opentelemetry/resources",

@@ -25,7 +25,6 @@ import {
   type SessionManager,
   type SessionStore,
 } from "@opentelemetry/browser-sdk/session";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
 import { browserDetector } from "@opentelemetry/opentelemetry-browser-detector";
 import { detectResources } from "@opentelemetry/resources";
@@ -111,7 +110,6 @@ interface Run {
   stopping?: Promise<void>;
   sessionManager?: SessionManager;
   sdk?: WebSdk;
-  deregister?: () => void;
   recorder?: Recorder;
 }
 
@@ -286,8 +284,8 @@ async function start(
       ],
       exportConfig: { url: tracesUrl, headers },
     },
+    instrumentations,
   });
-  run.deregister = registerInstrumentations({ instrumentations });
 
   if (options.replay !== false && pageState().recording !== true) {
     run.recorder = new Recorder({
@@ -399,9 +397,6 @@ async function stop(): Promise<void> {
   try {
     await run.started;
     await run.recorder?.shutdown();
-
-    run.deregister?.();
-
     await run.sdk?.shutdown();
   } catch (error) {
     diag.warn("@clickhouse/clickstack-browser: shutdown failed", error);

@@ -138,7 +138,6 @@ import {
   createSessionManager,
   createSessionSpanProcessor,
 } from "@opentelemetry/browser-sdk/session";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
 
 const endpoint = "https://example-collector.clickhouse.com:4318";
 const tracesUrl = `${endpoint}/v1/traces`;
@@ -163,9 +162,7 @@ startBrowserSdk({
     processors: [createSessionSpanProcessor(sessionManager)],
     exportConfig: { url: tracesUrl },
   },
-});
-registerInstrumentations({
-  // enabled: false lets registration enable it after the providers exist.
+  // enabled: false lets the SDK enable them once its providers exist.
   instrumentations: [
     new FetchInstrumentation({
       ignoreUrls: [tracesUrl, logsUrl],
@@ -221,7 +218,7 @@ const replay = startReplay({
 - Browsers: Baseline Widely available (ES2022). No `eval`, so a strict
   Content Security Policy works; `connect-src` must allow the endpoint.
 - OpenTelemetry: `@opentelemetry/api` `>=1.9.1 <1.10.0` and `@opentelemetry/browser-sdk`
-  `>=0.4.0 <0.6.0`.
+  `^0.5.0`.
 
 ## License
 

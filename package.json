@@ -62,9 +62,8 @@
   },
   "dependencies": {
     "@opentelemetry/api-logs": "^0.223.0",
-    "@opentelemetry/browser-instrumentation": "^0.8.1",
+    "@opentelemetry/browser-instrumentation": "^0.8.2",
     "@opentelemetry/core": "^2.12.0",
-    "@opentelemetry/instrumentation": "^0.223.0",
     "@opentelemetry/instrumentation-long-task": "^0.67.0",
     "@opentelemetry/opentelemetry-browser-detector": "^0.223.0",
     "@opentelemetry/resources": "^2.12.0",
@@ -74,14 +73,14 @@
   },
   "peerDependencies": {
     "@opentelemetry/api": ">=1.9.1 <1.10.0",
-    "@opentelemetry/browser-sdk": ">=0.4.0 <0.6.0"
+    "@opentelemetry/browser-sdk": "^0.5.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
     "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/browser-sdk": "0.4.0",
+    "@opentelemetry/browser-sdk": "0.5.0",
     "@opentelemetry/sdk-trace": "2.12.0",
     "@playwright/test": "1.64.0",
     "@rrweb/types": "2.1.7",
@@ -143,7 +142,7 @@
       "path": "dist/clickstack.iife.js",
       "rolldown": false,
       "gzip": true,
-      "limit": "80 kB"
+      "limit": "70 kB"
     }
   ]
 }
