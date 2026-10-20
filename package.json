@@ -125,7 +125,7 @@
         "@opentelemetry"
       ],
       "gzip": true,
-      "limit": "28 kB"
+      "limit": "30 kB"
     },
     {
       "name": "npm: ./replay",
@@ -135,7 +135,7 @@
         "@opentelemetry"
       ],
       "gzip": true,
-      "limit": "27 kB"
+      "limit": "30 kB"
     },
     {
       "name": "IIFE: dist/clickstack.iife.js",

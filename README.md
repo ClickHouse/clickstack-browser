@@ -92,6 +92,30 @@ Other functions:
   allows.
 - `shutdown()` sends what is buffered and stops everything for the rest of the page.
 
+## Caught errors
+
+Uncaught errors and unhandled rejections are recorded as `exception` log events, and
+`console.error(error)` as a console event with the stack in its body. Errors your code catches,
+such as in a React error boundary, need a call of their own. Add `@opentelemetry/api-logs` to your
+dependencies:
+
+```ts
+import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+
+export function recordException(error: unknown): void {
+  logs.getLogger("example-app").emit({
+    eventName: "exception",
+    severityNumber: SeverityNumber.ERROR,
+    exception: error,
+  });
+}
+```
+
+- The SDK sets `exception.type`, `exception.message` and `exception.stacktrace` from the error.
+- With the script tag, the same API is `ClickStack.otel.logs`, and `SeverityNumber.ERROR` is `17`.
+- To link the record to a span, pass `context: trace.setSpan(context.active(), span)`. Browsers
+  lose the active span after an `await`.
+
 ## Privacy
 
 Replay masks all text and the values of every `input` (hidden inputs included), `textarea` and

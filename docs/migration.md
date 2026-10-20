@@ -117,34 +117,11 @@ SDK and call `startReplay` with `maskAllText: false`. What masking does not cove
 
 ### Exceptions
 
-`recordException` recorded a span. Emit the `exception` log event instead, the same event the
-upstream errors instrumentation emits for uncaught errors. Add `@opentelemetry/api-logs` to your
-dependencies, at the version this package depends on:
-
-```ts
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
-
-export function recordException(
-  error: Error,
-  attributes: Record<string, string> = {},
-): void {
-  logs.getLogger("example-app").emit({
-    eventName: "exception",
-    severityNumber: SeverityNumber.ERROR,
-    attributes: {
-      "exception.type": error.name,
-      "exception.message": error.message,
-      "exception.stacktrace": error.stack,
-      ...attributes,
-    },
-  });
-}
-```
-
-Call it where errors are caught, because caught errors never reach the errors instrumentation:
-from `componentDidCatch` of a React error boundary,
-from a `useEffect` in Next.js `app/error.tsx`, or from `app.config.errorHandler` in Vue. With the
-script tag, `ClickStack.otel.logs` is the same API, and `severityNumber` is `17`.
+`recordException` recorded a span. Record the `exception` log event instead, the same event the
+upstream errors instrumentation emits for uncaught errors, as
+[Caught errors](../README.md#caught-errors) shows. Call it where errors are caught, because caught
+errors never reach the errors instrumentation: from `componentDidCatch` of a React error boundary,
+from a `useEffect` in Next.js `app/error.tsx`, or from `app.config.errorHandler` in Vue.
 
 ### User attributes
 

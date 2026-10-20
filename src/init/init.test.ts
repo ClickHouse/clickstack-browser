@@ -217,6 +217,26 @@ test("captures the console methods of the chosen level", async () => {
   expect(jsonBodies("/otel/v1/logs")).not.toContain("info-message");
 });
 
+test("records errors passed to the console with their message and stack", async () => {
+  const module = await load();
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  await started(module);
+
+  // Firefox and Safari stacks hold only the frames.
+  const framesOnly = new Error("bad");
+  framesOnly.stack = "handler@app.js:1:2";
+  // eslint-disable-next-line no-console -- The test checks how console arguments are recorded.
+  console.error("failed:", new Error("boom"), { id: 1 });
+  // eslint-disable-next-line no-console -- The test checks how console arguments are recorded.
+  console.error(framesOnly);
+  await module.shutdown();
+
+  const body = jsonBodies("/otel/v1/logs");
+  expect(body).toContain(String.raw`failed: Error: boom\n    at `);
+  expect(body).toContain(String.raw`{\"id\":1}`);
+  expect(body).toContain(String.raw`Error: bad\nhandler@app.js:1:2`);
+});
+
 test("captures no console calls with console false, and matches origins given as RegExp", async () => {
   const module = await load();
   module.init({

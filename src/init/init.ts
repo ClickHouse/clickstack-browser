@@ -60,6 +60,31 @@ const CONSOLE_METHODS: Record<ConsoleLevel, ConsoleMethod[]> = {
   debug: ["error", "warn", "info", "log", "debug"],
 };
 
+// Upstream's default serializer JSON-encodes objects, which turns an Error into "{}". This one
+// writes errors as their message and stack, and everything else as upstream does.
+function serializeConsoleArgs(args: unknown[]): string {
+  return args
+    .map((arg) => {
+      if (arg instanceof Error) {
+        const text = String(arg);
+        // Chromium's stack starts with the message; Firefox and Safari list only the frames.
+        if (arg.stack === undefined || arg.stack.startsWith(text)) {
+          return arg.stack ?? text;
+        }
+        return `${text}\n${arg.stack}`;
+      }
+      if (typeof arg === "object" && arg !== null) {
+        try {
+          return JSON.stringify(arg);
+        } catch {
+          return Object.prototype.toString.call(arg);
+        }
+      }
+      return String(arg);
+    })
+    .join(" ");
+}
+
 /**
  * Options of {@link init}.
  *
@@ -256,6 +281,7 @@ async function start(
           new ConsoleInstrumentation({
             enabled: false,
             logMethods: CONSOLE_METHODS[consoleLevel],
+            messageSerializer: serializeConsoleArgs,
           }),
         ]
       : []),
