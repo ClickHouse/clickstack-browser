@@ -58,6 +58,7 @@ async function exercise(api, startReplay) {
   assert.equal(api["getSessionId"]?.(), null);
   api["pauseReplay"]?.();
   api["resumeReplay"]?.();
+  api["startNewSession"]?.();
   await api["shutdown"]?.();
 
   const controller = functions(
@@ -95,6 +96,7 @@ test("the IIFE evaluates and runs in a context without a page", async () => {
     "resumeReplay",
     "setUser",
     "shutdown",
+    "startNewSession",
   ]);
 
   await exercise(api, () => ({}));

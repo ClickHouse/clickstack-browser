@@ -90,6 +90,8 @@ Other functions:
 - `setUser(user)` adds `user.id`, `user.email`, `user.name`, `user.full_name` and `user.roles` to
   later spans and log records; `setUser(null)` removes them. Set only what your privacy policy
   allows.
+- `startNewSession()` ends the current session and starts one with a new `session.id`. On sign-out,
+  call it with `setUser(null)`, so the next user on the device gets a session of their own.
 - `shutdown()` sends what is buffered and stops everything for the rest of the page.
 
 ## Caught errors

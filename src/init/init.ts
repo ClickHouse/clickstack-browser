@@ -382,6 +382,47 @@ export function getSessionId(): string | null {
 }
 
 /**
+ * Ends the current session and starts one with a new `session.id`, for example when the user
+ * signs out. Replay continues in the new session from the next user input.
+ *
+ * @remarks
+ * Does nothing before `init` has started or after {@link shutdown}. It keeps the user set with
+ * `setUser`; call `setUser(null)` as well on sign-out.
+ *
+ * @public
+ */
+export function startNewSession(): void {
+  const sessionManager = run.sessionManager;
+  if (
+    sessionManager === undefined ||
+    run.sessionId === null ||
+    run.stopping !== undefined
+  ) {
+    return;
+  }
+
+  // Upstream's resetSession ends the session, starts a new one and resets its timers, but it is
+  // private. Until it is public, a cleared store at least gives the next page load a new session.
+  const { resetSession } = sessionManager as unknown as {
+    resetSession?: () => void;
+  };
+  if (typeof resetSession === "function") {
+    resetSession.call(sessionManager);
+    return;
+  }
+
+  try {
+    localStorage.removeItem("opentelemetry-session");
+  } catch {
+    // Storage is blocked, so the next page load starts a new session anyway
+  }
+
+  diag.warn(
+    "@clickhouse/clickstack-browser: startNewSession takes effect on the next page load",
+  );
+}
+
+/**
  * Stops sending replay events until {@link resumeReplay}, for example while the user withholds
  * consent. RUM continues. Works before `init`
  *

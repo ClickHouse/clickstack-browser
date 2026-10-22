@@ -14,6 +14,7 @@ export {
   pauseReplay,
   resumeReplay,
   shutdown,
+  startNewSession,
 } from "./init/init.ts";
 export type { ClickStackBrowserOptions, ConsoleLevel } from "./init/init.ts";
 export { setUser } from "./rum/user.ts";

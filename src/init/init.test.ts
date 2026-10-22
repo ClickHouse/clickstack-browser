@@ -1,4 +1,5 @@
 import { context, diag, propagation, trace } from "@opentelemetry/api";
+import { SessionManager } from "@opentelemetry/browser-sdk/session";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { logs } from "../logs-api.ts";
 import { setUser } from "../rum/user.ts";
@@ -334,4 +335,52 @@ test("keeps working when localStorage refuses to store the session", async () =>
   const module = await load();
   module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
   expect(await started(module)).toMatch(/^[0-9a-f]{32}$/);
+});
+
+test("startNewSession gives later telemetry a new session id", async () => {
+  const module = await load();
+  module.startNewSession();
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  const first = await started(module);
+
+  module.startNewSession();
+  const second = module.getSessionId();
+
+  expect(second).toMatch(/^[0-9a-f]{32}$/);
+  expect(second).not.toBe(first);
+  expect(storedSessionId()).toBe(second);
+
+  await (await fetch("/api/items")).text();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await module.shutdown();
+
+  expect(jsonBodies("/otel/v1/traces")).toContain(
+    '"key":"session.id","value":{"stringValue":"' + (second ?? "") + '"}',
+  );
+});
+
+test("without upstream's resetSession, startNewSession clears the stored session and warns", async () => {
+  const prototype = SessionManager.prototype as unknown as object;
+  const resetSession = Object.getOwnPropertyDescriptor(
+    prototype,
+    "resetSession",
+  );
+  const module = await load();
+  
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  const first = await started(module);
+
+  const warn = vi.spyOn(diag, "warn");
+  Reflect.deleteProperty(prototype, "resetSession");
+  try {
+    module.startNewSession();
+  } finally {
+    if (resetSession) {
+      Object.defineProperty(prototype, "resetSession", resetSession);
+    }
+  }
+
+  expect(module.getSessionId()).toBe(first);
+  expect(storedSessionId()).toBeUndefined();
+  expect(warn).toHaveBeenCalledOnce();
 });
