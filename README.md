@@ -62,16 +62,18 @@ init({
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
 in Next.js, `src/main.ts` in Vite), not in a component effect.
 
-| Option         | Default   | Meaning                                                                                                                                                                                                   |
-| -------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`     | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
-| `serviceName`  | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
-| `environment`  | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
-| `apiKey`       | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
-| `traceOrigins` | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
-| `replay`       | `true`    | `false` turns session replay off.                                                                                                                                                                         |
-| `console`      | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
-| `sanitizeUrl`  | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
+| Option          | Default   | Meaning                                                                                                                                                                                                   |
+| --------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`      | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
+| `serviceName`   | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
+| `environment`   | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
+| `apiKey`        | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
+| `traceOrigins`  | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
+| `replay`        | `true`    | `false` turns session replay off.                                                                                                                                                                         |
+| `maskAllText`   | `true`    | Masks all text in the replay. With `false`, elements with the `rr-mask` class stay masked ([Privacy](#privacy)).                                                                                          |
+| `maskAllInputs` | `true`    | Masks the values of all inputs, text areas and selects. With `false`, only passwords are masked.                                                                                                          |     |
+| `console`       | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
+| `sanitizeUrl`   | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
 
 Without an http(s) `endpoint` or a `serviceName`, `init` logs an error and starts nothing. The rest
 is fixed:
@@ -80,7 +82,7 @@ is fixed:
   resource timing, long task and console.
 - Sessions last at most 4 hours and end after 15 minutes without telemetry. They are stored in
   `localStorage` and shared by the tabs of the origin.
-- Replay masks all text and form values. Nothing is sampled.
+- Nothing is sampled.
 - Diagnostics go to the browser console at WARN level.
 
 Other functions:
@@ -120,8 +122,9 @@ export function recordException(error: unknown): void {
 
 ## Privacy
 
-Replay masks all text and the values of every `input` (hidden inputs included), `textarea` and
-`select`.
+By default, replay masks all text and the values of every `input` (hidden inputs included),
+`textarea` and `select`. With `maskAllText: false`, give sensitive elements rrweb's `rr-mask` class
+to keep their text masked.
 
 - Not masked: checkbox and radio state, and attributes such as `placeholder`, `title`, `alt`,
   `aria-label` and link URLs. Give sensitive elements rrweb's `rr-block` class to record them as
@@ -208,11 +211,9 @@ const replay = startReplay({
   replay by its `service.name`.
 - Add the logs URL to the `ignoreUrls` of the fetch, XHR and resource timing instrumentations, or
   every replay export is recorded as telemetry.
-- `maskAllText` and `maskAllInputs` default to `true`. With `maskAllInputs: false`, only passwords
-  are masked.
-- Pass `sanitizeUrl` to `startReplay` too, for the page URL in the replay. The navigation timing
-  and resource timing instrumentations have no `sanitizeUrl`; rewrite their `url.full` in a log
-  record processor.
+- `startReplay` takes `maskAllText`, `maskAllInputs` and `sanitizeUrl` as `init` does. The
+  navigation timing and resource timing instrumentations have no `sanitizeUrl`; rewrite their
+  `url.full` in a log record processor.
 - `startReplay` returns `{ pause, resume, shutdown }`. `setUser` works with `init` only.
 
 ## What is emitted

@@ -115,8 +115,18 @@ export interface ClickStackBrowserOptions {
    * allow the `traceparent`, `tracestate` and `baggage` request headers in CORS. Default: none.
    */
   traceOrigins?: (string | RegExp)[] | undefined;
-  /** Records a session replay, with all text and form values masked. Default: `true`. */
+  /** Records a session replay. Default: `true`. */
   replay?: boolean | undefined;
+  /**
+   * Masks all text in the replay. With `false`, elements with the `rr-mask` class are still
+   * masked. Default: `true`.
+   */
+  maskAllText?: boolean | undefined;
+  /**
+   * Masks the values of all inputs, text areas and selects in the replay. With `false`, only
+   * passwords are masked. Default: `true`.
+   */
+  maskAllInputs?: boolean | undefined;
   /** Console level captured as log events, or `false` for none. Default: `'error'`. */
   console?: ConsoleLevel | false | undefined;
   /**
@@ -321,8 +331,8 @@ async function start(
         options.apiKey,
         resourceAttributes,
       ),
-      maskAllText: true,
-      maskAllInputs: true,
+      maskAllText: options.maskAllText ?? true,
+      maskAllInputs: options.maskAllInputs ?? true,
       sanitizeUrl,
     });
 

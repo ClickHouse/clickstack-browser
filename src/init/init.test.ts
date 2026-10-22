@@ -287,6 +287,33 @@ test("records the replay under the same session", async () => {
   );
 });
 
+test("records text and input values when masking is turned off, except rr-mask elements", async () => {
+  document.body.innerHTML =
+    '<p>visible-text</p><input value="typed-value"><span class="rr-mask">hidden-text</span>';
+  const module = await load();
+  module.init({
+    endpoint: "/otel",
+    serviceName: "web-app",
+    maskAllText: false,
+    maskAllInputs: false,
+  });
+
+  await started(module);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  await module.shutdown();
+  document.body.innerHTML = "";
+
+  const replay = sentTo("/otel/v1/logs").filter(isReplay);
+  const json = (
+    await Promise.all(replay.map((r) => gunzip(r.init?.body)))
+  ).join("");
+
+  expect(json).toContain("visible-text");
+  expect(json).toContain("typed-value");
+  expect(json).not.toContain("hidden-text");
+});
+
 test("pauseReplay before init sends no replay", async () => {
   const module = await load();
   module.pauseReplay();
@@ -366,7 +393,7 @@ test("without upstream's resetSession, startNewSession clears the stored session
     "resetSession",
   );
   const module = await load();
-  
+
   module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
   const first = await started(module);
 

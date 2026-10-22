@@ -55,19 +55,19 @@ With the script tag, load the file as the [README](../README.md#script-tag) show
 
 ## Options
 
-| `@hyperdx/browser`                                                                                                    | Now                   | Notes                                                                                                                             |
-| --------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `apiKey`                                                                                                              | `apiKey` (optional)   | Same bare `authorization` header. Leave it out when a proxy adds the key.                                                         |
-| `service`                                                                                                             | `serviceName`         | Required.                                                                                                                         |
-| `url` (default `https://in-otel.hyperdx.io`)                                                                          | `endpoint`            | Required, with no default. `/v1/traces` and `/v1/logs` are appended; a relative value such as `/otel` resolves against the page.  |
-| `tracePropagationTargets`                                                                                             | `traceOrigins`        | A RegExp works as before (matched against the full URL). A string is now an origin or URL prefix that matches every URL under it. |
-| `consoleCapture`, `captureConsole`                                                                                    | `console`             | Default `'error'`. `'debug'` records every method, as `true` did; `false` now turns `console.error` off too.                      |
-| `disableReplay: true`                                                                                                 | `replay: false`       |                                                                                                                                   |
-| `maskAllInputs`, `maskAllText`                                                                                        | Always on with `init` | All text and every form value, hidden inputs included, are masked. `startReplay` takes both options, default `true`.              |
-| `maskClass`, `blockClass`, `blockSelector`, `ignoreClass`, `recordCanvas`, `sampling`, `replay` (rrweb options)       | Removed               | rrweb's default classes (`rr-block`, `rr-ignore`, `rr-mask`) still apply. Canvas is not recorded.                                 |
-| `otelResourceAttributes['deployment.environment']`                                                                    | `environment`         | Recorded as `deployment.environment.name`, the stable semantic convention name.                                                   |
-| `tracesUrl`, `logsUrl`, `otelResourceAttributes`, `instrumentations`, `ignoreUrls`, `debug`, `advancedNetworkCapture` | Removed               | See [Not offered](#not-offered).                                                                                                  |
-| `disableIntercom`                                                                                                     | Removed               | The Intercom integration is gone.                                                                                                 |
+| `@hyperdx/browser`                                                                                                    | Now                            | Notes                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `apiKey`                                                                                                              | `apiKey` (optional)            | Same bare `authorization` header. Leave it out when a proxy adds the key.                                                         |
+| `service`                                                                                                             | `serviceName`                  | Required.                                                                                                                         |
+| `url` (default `https://in-otel.hyperdx.io`)                                                                          | `endpoint`                     | Required, with no default. `/v1/traces` and `/v1/logs` are appended; a relative value such as `/otel` resolves against the page.  |
+| `tracePropagationTargets`                                                                                             | `traceOrigins`                 | A RegExp works as before (matched against the full URL). A string is now an origin or URL prefix that matches every URL under it. |
+| `consoleCapture`, `captureConsole`                                                                                    | `console`                      | Default `'error'`. `'debug'` records every method, as `true` did; `false` now turns `console.error` off too.                      |
+| `disableReplay: true`                                                                                                 | `replay: false`                |                                                                                                                                   |
+| `maskAllInputs`, `maskAllText`                                                                                        | `maskAllInputs`, `maskAllText` | Both default to `true`; `@hyperdx/browser` recorded text in clear by default. Hidden inputs are masked too.                       |
+| `maskClass`, `blockClass`, `blockSelector`, `ignoreClass`, `recordCanvas`, `sampling`, `replay` (rrweb options)       | Removed                        | rrweb's default classes (`rr-block`, `rr-ignore`, `rr-mask`) still apply. Canvas is not recorded.                                 |
+| `otelResourceAttributes['deployment.environment']`                                                                    | `environment`                  | Recorded as `deployment.environment.name`, the stable semantic convention name.                                                   |
+| `tracesUrl`, `logsUrl`, `otelResourceAttributes`, `instrumentations`, `ignoreUrls`, `debug`, `advancedNetworkCapture` | Removed                        | See [Not offered](#not-offered).                                                                                                  |
+| `disableIntercom`                                                                                                     | Removed                        | The Intercom integration is gone.                                                                                                 |
 
 ## Methods
 
@@ -104,9 +104,9 @@ for the replay:
 
 ### Masking
 
-`@hyperdx/browser` recorded page text in clear unless `maskAllText` was set. `init` always masks
-all text and all form values, hidden inputs included. To record text in clear, set up the upstream
-SDK and call `startReplay` with `maskAllText: false`. What masking does not cover is listed under
+`@hyperdx/browser` recorded page text in clear unless `maskAllText` was set. `init` masks all
+text and all form values by default, hidden inputs included. Pass `maskAllText: false` to record
+text in clear as before. What masking does not cover is listed under
 [Privacy](../README.md#privacy).
 
 ### Console capture
