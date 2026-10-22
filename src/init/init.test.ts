@@ -107,6 +107,7 @@ test("sends spans with the session, the user and the resource to the endpoint", 
     endpoint: "/otel",
     apiKey: "key-1",
     serviceName: "web-app",
+    serviceVersion: "2.0.0",
     replay: false,
   });
   const sessionId = await started(module);
@@ -127,6 +128,9 @@ test("sends spans with the session, the user and the resource to the endpoint", 
   expect(body).toContain('"key":"user.id","value":{"stringValue":"user-1"}');
   expect(body).toContain(
     '"key":"service.name","value":{"stringValue":"web-app"}',
+  );
+  expect(body).toContain(
+    '"key":"service.version","value":{"stringValue":"2.0.0"}',
   );
   expect(body).toContain(
     '"key":"telemetry.distro.name","value":{"stringValue":"clickstack-browser"}',

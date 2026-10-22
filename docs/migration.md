@@ -66,6 +66,7 @@ With the script tag, load the file as the [README](../README.md#script-tag) show
 | `maskAllInputs`, `maskAllText`                                                                                        | `maskAllInputs`, `maskAllText` | Both default to `true`; `@hyperdx/browser` recorded text in clear by default. Hidden inputs are masked too.                       |
 | `maskClass`, `blockClass`, `blockSelector`, `ignoreClass`, `recordCanvas`, `sampling`, `replay` (rrweb options)       | Removed                        | rrweb's default classes (`rr-block`, `rr-ignore`, `rr-mask`) still apply. Canvas is not recorded.                                 |
 | `otelResourceAttributes['deployment.environment']`                                                                    | `environment`                  | Recorded as `deployment.environment.name`, the stable semantic convention name.                                                   |
+| `otelResourceAttributes['service.version']`                                                                           | `serviceVersion`               | Recorded as `service.version`.                                                                                                    |
 | `tracesUrl`, `logsUrl`, `otelResourceAttributes`, `instrumentations`, `ignoreUrls`, `debug`, `advancedNetworkCapture` | Removed                        | See [Not offered](#not-offered).                                                                                                  |
 | `disableIntercom`                                                                                                     | Removed                        | The Intercom integration is gone.                                                                                                 |
 
@@ -92,7 +93,7 @@ for the replay:
 | Need                                                    | Upstream alternative                                                                                         |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Separate traces and logs URLs, or extra request headers | `exportConfig.url` and `exportConfig.headers` per signal in `startBrowserSdk`                                |
-| Other resource attributes, such as `service.version`    | `resourceAttributes` in `startBrowserSdk`, and the same in `startReplay`                                     |
+| Other resource attributes                               | `resourceAttributes` in `startBrowserSdk`, and the same in `startReplay`                                     |
 | Instrumentation settings, or other instrumentations     | Construct the instrumentations yourself and pass them to `instrumentations` in `startBrowserSdk`             |
 | Ignored URLs                                            | `ignoreUrls` of the fetch, XHR and resource timing instrumentations                                          |
 | Request and response headers                            | `applyCustomAttributesOnSpan` of the fetch and XHR instrumentations; record an allowlist, never every header |

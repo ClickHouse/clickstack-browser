@@ -31,6 +31,7 @@ import { detectResources } from "@opentelemetry/resources";
 import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
   ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
   ATTR_TELEMETRY_DISTRO_NAME,
   ATTR_TELEMETRY_DISTRO_VERSION,
 } from "@opentelemetry/semantic-conventions";
@@ -103,6 +104,11 @@ export interface ClickStackBrowserOptions {
   apiKey?: string | undefined;
   /** `service.name` of every span, log record and replay record. */
   serviceName: string;
+  /**
+   * Version of the app, such as `2.0.0` or a commit SHA, recorded as the resource attribute
+   * `service.version`. Default: none.
+   */
+  serviceVersion?: string | undefined;
   /**
    * Deployment environment, such as `production` or `staging`, recorded as the resource attribute
    * `deployment.environment.name`. Default: none.
@@ -248,6 +254,9 @@ async function start(
     [ATTR_TELEMETRY_DISTRO_NAME]: "clickstack-browser",
     [ATTR_TELEMETRY_DISTRO_VERSION]: VERSION,
     [ATTR_SERVICE_NAME]: options.serviceName,
+    ...(options.serviceVersion
+      ? { [ATTR_SERVICE_VERSION]: options.serviceVersion }
+      : {}),
     ...(options.environment
       ? { [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: options.environment }
       : {}),

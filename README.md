@@ -62,18 +62,19 @@ init({
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
 in Next.js, `src/main.ts` in Vite), not in a component effect.
 
-| Option          | Default   | Meaning                                                                                                                                                                                                   |
-| --------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`      | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
-| `serviceName`   | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
-| `environment`   | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
-| `apiKey`        | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
-| `traceOrigins`  | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
-| `replay`        | `true`    | `false` turns session replay off.                                                                                                                                                                         |
-| `maskAllText`   | `true`    | Masks all text in the replay. With `false`, elements with the `rr-mask` class stay masked ([Privacy](#privacy)).                                                                                          |
-| `maskAllInputs` | `true`    | Masks the values of all inputs, text areas and selects. With `false`, only passwords are masked.                                                                                                          |     |
-| `console`       | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
-| `sanitizeUrl`   | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
+| Option           | Default   | Meaning                                                                                                                                                                                                   |
+| ---------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`       | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
+| `serviceName`    | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
+| `serviceVersion` | None      | `service.version`, such as `2.0.0` or a commit SHA, to compare releases.                                                                                                                                  |
+| `environment`    | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
+| `apiKey`         | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
+| `traceOrigins`   | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
+| `replay`         | `true`    | `false` turns session replay off.                                                                                                                                                                         |
+| `maskAllText`    | `true`    | Masks all text in the replay. With `false`, elements with the `rr-mask` class stay masked ([Privacy](#privacy)).                                                                                          |
+| `maskAllInputs`  | `true`    | Masks the values of all inputs, text areas and selects. With `false`, only passwords are masked.                                                                                                          |     |
+| `console`        | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
+| `sanitizeUrl`    | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
 
 Without an http(s) `endpoint` or a `serviceName`, `init` logs an error and starts nothing. The rest
 is fixed:
@@ -218,9 +219,9 @@ const replay = startReplay({
 
 ## What is emitted
 
-- Resource: `service.name`, `deployment.environment.name`, `telemetry.sdk.*`,
-  `telemetry.distro.name` (`clickstack-browser`), `telemetry.distro.version`, `user_agent.original`
-  and `browser.*`.
+- Resource: `service.name`, `service.version`, `deployment.environment.name`,
+  `telemetry.sdk.*`, `telemetry.distro.name` (`clickstack-browser`), `telemetry.distro.version`,
+  `user_agent.original` and `browser.*`.
 - Every span and log record: `session.id`, `browser.document.url.full`, and `user.*` after
   `setUser`.
 - Log events: `browser.navigation`, `browser.user_action.click`, `browser.web_vital`,
