@@ -246,7 +246,7 @@ const replay = startReplay({
 - Browsers: Baseline Widely available (ES2022). No `eval`, so a strict
   Content Security Policy works; `connect-src` must allow the endpoint.
 - OpenTelemetry: `@opentelemetry/api` `>=1.9.1 <1.10.0` and `@opentelemetry/browser-sdk`
-  `^0.5.0`.
+  `^0.6.0`.
 
 ## License
 

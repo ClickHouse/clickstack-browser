@@ -11,6 +11,7 @@ import { UserActionInstrumentation } from "@opentelemetry/browser-instrumentatio
 import { WebVitalsInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/web-vitals";
 import { XhrInstrumentation } from "@opentelemetry/browser-instrumentation/experimental/xhr";
 import { startBrowserSdk, type WebSdk } from "@opentelemetry/browser-sdk";
+import { browserDetector } from "@opentelemetry/browser-sdk/browser-detector";
 import {
   createDocumentLogRecordProcessor,
   createDocumentSpanProcessor,
@@ -23,10 +24,8 @@ import {
   createSessionManager,
   createSessionSpanProcessor,
   type SessionManager,
-  type SessionStore,
 } from "@opentelemetry/browser-sdk/session";
 import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
-import { browserDetector } from "@opentelemetry/opentelemetry-browser-detector";
 import { detectResources } from "@opentelemetry/resources";
 import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
@@ -222,7 +221,7 @@ async function start(
 ): Promise<void> {
   const sessionManager = createSessionManager({
     sessionIdGenerator: createDefaultSessionIdGenerator(),
-    sessionStore: safeStore(createLocalStorageSessionStore()),
+    sessionStore: createLocalStorageSessionStore(),
     maxDuration: 4 * 60 * 60,
     inactivityTimeout: 15 * 60,
   });
@@ -351,27 +350,6 @@ async function start(
 
     run.recorder.start();
   }
-}
-
-// Upstream LocalStorageSessionStore throws synchronously when localStorage is blocked or full, and
-// SessionManager calls save() from its rotation timers without catching, which stops rotation.
-function safeStore(store: SessionStore): SessionStore {
-  return {
-    save: async (session) => {
-      try {
-        await store.save(session);
-      } catch {
-        // The session then lives in memory for this page only
-      }
-    },
-    get: async () => {
-      try {
-        return await store.get();
-      } catch {
-        return null;
-      }
-    },
-  };
 }
 
 // Upstream matches a string against the full request URL exactly. An origin must match every URL
