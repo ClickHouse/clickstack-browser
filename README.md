@@ -79,8 +79,8 @@ in Next.js, `src/main.ts` in Vite), not in a component effect.
 Without an http(s) `endpoint` or a `serviceName`, `init` logs an error and starts nothing. The rest
 is fixed:
 
-- Instrumentations: fetch, XHR, errors, navigation, user action, web vitals, navigation timing,
-  resource timing, long task and console.
+- Instrumentations: fetch, XHR, errors, failed resource loads, navigation, user action, web vitals,
+  navigation timing, resource timing, long task and console.
 - Sessions last at most 4 hours and end after 15 minutes without telemetry. They are stored in
   `localStorage` and shared by the tabs of the origin.
 - Nothing is sampled.
@@ -95,31 +95,32 @@ Other functions:
   allows.
 - `startNewSession()` ends the current session and starts one with a new `session.id`. On sign-out,
   call it with `setUser(null)`, so the next user on the device gets a session of their own.
+- `recordException(error, attributes?)` records an error your code caught ([Errors](#errors)).
 - `shutdown()` sends what is buffered and stops everything for the rest of the page.
 
-## Caught errors
+## Errors
 
-Uncaught errors and unhandled rejections are recorded as `exception` log events, and
-`console.error(error)` as a console event with the stack in its body. Errors your code catches,
-such as in a React error boundary, need a call of their own. Add `@opentelemetry/api-logs` to your
-dependencies:
+Uncaught errors, unhandled rejections, and failed loads of images, scripts, stylesheets and media
+are recorded as `exception` log events. `console.error(error)` is recorded as a console event with
+the stack in its body. Record errors your code catches, such as in a React error boundary, with
+`recordException`:
 
 ```ts
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import { recordException } from "@clickhouse/clickstack-browser";
 
-export function recordException(error: unknown): void {
-  logs.getLogger("example-app").emit({
-    eventName: "exception",
-    severityNumber: SeverityNumber.ERROR,
-    exception: error,
-  });
+try {
+  await checkout();
+} catch (error) {
+  recordException(error, { "app.operation": "checkout" });
 }
 ```
 
-- The SDK sets `exception.type`, `exception.message` and `exception.stacktrace` from the error.
-- With the script tag, the same API is `ClickStack.otel.logs`, and `SeverityNumber.ERROR` is `17`.
-- To link the record to a span, pass `context: trace.setSpan(context.active(), span)`. Browsers
-  lose the active span after an `await`.
+- Each event has `exception.type`, `exception.message` and `exception.stacktrace`, the browser's
+  raw stack text. A thrown value that is not an error is recorded as JSON text in
+  `exception.message`.
+- Failed loads have the type `ResourceLoadError` and the URL in `url.full`.
+- Inside an active span, `recordException` links the event to it. Browsers lose the active span
+  after an `await`.
 
 ## Privacy
 

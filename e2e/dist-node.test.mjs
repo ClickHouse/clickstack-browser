@@ -59,6 +59,7 @@ async function exercise(api, startReplay) {
   api["pauseReplay"]?.();
   api["resumeReplay"]?.();
   api["startNewSession"]?.();
+  api["recordException"]?.(new Error("server-side"));
   await api["shutdown"]?.();
 
   const controller = functions(
@@ -93,6 +94,7 @@ test("the IIFE evaluates and runs in a context without a page", async () => {
     "init",
     "otel",
     "pauseReplay",
+    "recordException",
     "resumeReplay",
     "setUser",
     "shutdown",

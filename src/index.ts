@@ -17,5 +17,6 @@ export {
   startNewSession,
 } from "./init/init.ts";
 export type { ClickStackBrowserOptions, ConsoleLevel } from "./init/init.ts";
+export { recordException } from "./rum/exceptions.ts";
 export { setUser } from "./rum/user.ts";
 export type { User } from "./rum/user.ts";

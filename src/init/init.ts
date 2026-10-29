@@ -39,6 +39,10 @@ import { pageState } from "../internal/global.ts";
 import { createReplayProvider } from "../replay/exporter.ts";
 import { Recorder } from "../replay/recorder.ts";
 import {
+  exceptionAttributes,
+  listenForResourceErrors,
+} from "../rum/exceptions.ts";
+import {
   createUrlSanitizerLogRecordProcessor,
   guardSanitizeUrl,
 } from "../rum/sanitize-url.ts";
@@ -150,6 +154,7 @@ interface Run {
   stopping?: Promise<void>;
   sessionManager?: SessionManager;
   sdk?: WebSdk;
+  stopResourceErrors?: () => void;
   recorder?: Recorder;
 }
 
@@ -288,7 +293,10 @@ async function start(
       ...sanitize,
     }),
     new ResourceTimingInstrumentation({ enabled: false, ignoreUrls }),
-    new ErrorsInstrumentation({ enabled: false }),
+    new ErrorsInstrumentation({
+      enabled: false,
+      applyCustomAttributes: exceptionAttributes,
+    }),
     new NavigationInstrumentation({ enabled: false, ...sanitize }),
     new NavigationTimingInstrumentation({ enabled: false }),
     new UserActionInstrumentation({ enabled: false }),
@@ -330,6 +338,7 @@ async function start(
     },
     instrumentations,
   });
+  run.stopResourceErrors = listenForResourceErrors(sanitizeUrl);
 
   if (options.replay !== false && pageState().recording !== true) {
     run.recorder = new Recorder({
@@ -461,6 +470,7 @@ async function stop(): Promise<void> {
   try {
     await run.started;
     await run.recorder?.shutdown();
+    run.stopResourceErrors?.();
     await run.sdk?.shutdown();
   } catch (error) {
     diag.warn("@clickhouse/clickstack-browser: shutdown failed", error);
