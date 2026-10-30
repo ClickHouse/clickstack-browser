@@ -119,6 +119,9 @@ try {
   raw stack text. A thrown value that is not an error is recorded as JSON text in
   `exception.message`.
 - Failed loads have the type `ResourceLoadError` and the URL in `url.full`.
+- Errors thrown by a script from another origin, such as a CDN, arrive as `Script error.` with no
+  message or stack, unless its `<script>` tag has `crossorigin="anonymous"` and the server sends
+  `Access-Control-Allow-Origin`.
 - Inside an active span, `recordException` links the event to it. Browsers lose the active span
   after an `await`.
 
