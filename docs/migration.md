@@ -126,6 +126,8 @@ of a React error boundary, from a `useEffect` in Next.js `app/error.tsx`, or fro
 
 - Failed loads of images, scripts, stylesheets and media are still recorded, as `exception` events
   with the type `ResourceLoadError` and the URL in `url.full`.
+- `console.error` with an error argument is a `browser.console` log event that carries the error's
+  `exception.*` attributes, where `@hyperdx/browser` recorded an error span.
 - Stack traces are the browser's raw stack text in `exception.stacktrace`. `@hyperdx/browser` sent
   parsed frames in `exception.parsed_stacktrace`; parsing frames and looking up source maps are
   left to ClickStack. Set `serviceVersion` to the release id you upload source maps with.

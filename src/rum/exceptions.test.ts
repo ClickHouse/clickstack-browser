@@ -5,9 +5,11 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { logs } from "../logs-api.ts";
 import {
+  consoleExceptionProcessor,
   exceptionAttributes,
   listenForResourceErrors,
   recordException,
+  serializeConsoleArgs,
 } from "./exceptions.ts";
 
 let records: ReadableLogRecord[] = [];
@@ -65,6 +67,83 @@ test("errors give their type, message and stack; other values become JSON text",
   expect(exceptionAttributes(circular)).toEqual({
     "exception.message": "[object Object]",
   });
+});
+
+test("appends the cause chain to the stack as Caused by sections", () => {
+  const cause = new TypeError("Failed to fetch");
+  const error = new Error("Checkout failed", { cause });
+  const stack = String(exceptionAttributes(error)["exception.stacktrace"]);
+
+  expect(stack.startsWith(String(error.stack))).toBe(true);
+  expect(stack).toContain(`\nCaused by: ${String(cause.stack)}`);
+});
+
+test("names frames-only causes, writes other causes as JSON, and stops at a loop or five causes", () => {
+  const framesOnly = Object.assign(new TypeError("Failed to fetch"), {
+    stack: "fetchCart@app.js:42:9",
+  });
+  expect(
+    exceptionAttributes({
+      message: "outer",
+      stack: "outer@app.js:1:1",
+      cause: framesOnly,
+    })["exception.stacktrace"],
+  ).toBe(
+    "outer@app.js:1:1\nCaused by: TypeError: Failed to fetch\nfetchCart@app.js:42:9",
+  );
+  expect(
+    exceptionAttributes({ message: "outer", cause: { code: 1 } })[
+      "exception.stacktrace"
+    ],
+  ).toBe('Error: outer\nCaused by: {"code":1}');
+
+  const a: Record<string, unknown> = { name: "A", message: "a", stack: "A: a" };
+  a["cause"] = { name: "B", message: "b", stack: "B: b", cause: a };
+  expect(exceptionAttributes(a)["exception.stacktrace"]).toBe(
+    "A: a\nCaused by: B: b",
+  );
+
+  let deep: Record<string, unknown> = { message: "7", stack: "S7" };
+  for (let i = 6; i >= 1; i--) {
+    deep = { message: String(i), stack: `S${String(i)}`, cause: deep };
+  }
+  expect(
+    String(exceptionAttributes(deep)["exception.stacktrace"]).split(
+      "Caused by:",
+    ),
+  ).toHaveLength(6);
+});
+
+test("a console record gets exception attributes from an error argument, and no other record does", () => {
+  const consoleRecords: ReadableLogRecord[] = [];
+  const logger = new LoggerProvider({
+    processors: [
+      consoleExceptionProcessor,
+      {
+        onEmit: (r) => consoleRecords.push(r),
+        forceFlush: () => Promise.resolve(),
+        shutdown: () => Promise.resolve(),
+      },
+    ],
+  }).getLogger("test");
+
+  expect(serializeConsoleArgs(["failed:", new Error("boom")])).toMatch(
+    /^failed: Error: boom\n/,
+  );
+  logger.emit({ eventName: "browser.console" });
+  serializeConsoleArgs(["plain text", { message: "an API response" }]);
+  logger.emit({ eventName: "browser.console" });
+  serializeConsoleArgs([new Error("not a console record")]);
+  logger.emit({ eventName: "other" });
+  logger.emit({ eventName: "browser.console" });
+
+  expect(consoleRecords.map((r) => r.attributes["exception.message"])).toEqual([
+    "boom",
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  expect(consoleRecords[0]?.attributes["exception.type"]).toBe("Error");
 });
 
 test("recordException emits an exception event with the given attributes", () => {

@@ -101,9 +101,9 @@ Other functions:
 ## Errors
 
 Uncaught errors, unhandled rejections, and failed loads of images, scripts, stylesheets and media
-are recorded as `exception` log events. `console.error(error)` is recorded as a console event with
-the stack in its body. Record errors your code catches, such as in a React error boundary, with
-`recordException`:
+are recorded as `exception` log events. `console.error` calls are console events. When an argument
+is an error, the event also carries its `exception.*` attributes, as for React's caught render
+errors. Record other errors your code catches with `recordException`:
 
 ```ts
 import { recordException } from "@clickhouse/clickstack-browser";
@@ -116,8 +116,8 @@ try {
 ```
 
 - Each event has `exception.type`, `exception.message` and `exception.stacktrace`, the browser's
-  raw stack text. A thrown value that is not an error is recorded as JSON text in
-  `exception.message`.
+  raw stack text. An error's `cause` chain, up to five deep, follows the stack as `Caused by:`
+  sections. A thrown value that is not an error is recorded as JSON text in `exception.message`.
 - Failed loads have the type `ResourceLoadError` and the URL in `url.full`.
 - Errors thrown by a script from another origin, such as a CDN, arrive as `Script error.` with no
   message or stack, unless its `<script>` tag has `crossorigin="anonymous"` and the server sends

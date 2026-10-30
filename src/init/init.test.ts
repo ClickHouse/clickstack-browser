@@ -221,6 +221,7 @@ test("captures the console methods of the chosen level", async () => {
 
   expect(jsonBodies("/otel/v1/logs")).toContain("warn-message");
   expect(jsonBodies("/otel/v1/logs")).not.toContain("info-message");
+  expect(jsonBodies("/otel/v1/logs")).not.toContain('"key":"exception.');
 });
 
 test("records errors passed to the console with their message and stack", async () => {
@@ -241,6 +242,12 @@ test("records errors passed to the console with their message and stack", async 
   expect(body).toContain(String.raw`failed: Error: boom\n    at `);
   expect(body).toContain(String.raw`{\"id\":1}`);
   expect(body).toContain(String.raw`Error: bad\nhandler@app.js:1:2`);
+  expect(body).toContain(
+    '"key":"exception.message","value":{"stringValue":"boom"}',
+  );
+  expect(body).toContain(
+    '"key":"exception.message","value":{"stringValue":"bad"}',
+  );
 });
 
 test("recordException sends an exception event under the session", async () => {
