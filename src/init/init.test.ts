@@ -2,6 +2,7 @@ import { context, diag, propagation, trace } from "@opentelemetry/api";
 import { SessionManager } from "@opentelemetry/browser-sdk/session";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { logs } from "../logs-api.ts";
+import { recordException } from "../rum/exceptions.ts";
 import { setUser } from "../rum/user.ts";
 
 type InitModule = typeof import("./init.ts");
@@ -240,6 +241,27 @@ test("records errors passed to the console with their message and stack", async 
   expect(body).toContain(String.raw`failed: Error: boom\n    at `);
   expect(body).toContain(String.raw`{\"id\":1}`);
   expect(body).toContain(String.raw`Error: bad\nhandler@app.js:1:2`);
+});
+
+test("recordException sends an exception event under the session", async () => {
+  const module = await load();
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  const sessionId = await started(module);
+
+  recordException(new Error("caught"), { "app.operation": "checkout" });
+  await module.shutdown();
+
+  const body = jsonBodies("/otel/v1/logs");
+
+  expect(body).toContain(
+    '"key":"exception.message","value":{"stringValue":"caught"}',
+  );
+  expect(body).toContain(
+    '"key":"app.operation","value":{"stringValue":"checkout"}',
+  );
+  expect(body).toContain(
+    '"key":"session.id","value":{"stringValue":"' + sessionId + '"}',
+  );
 });
 
 test("captures no console calls with console false, and matches origins given as RegExp", async () => {

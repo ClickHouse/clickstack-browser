@@ -119,7 +119,7 @@
     {
       "name": "npm: .",
       "path": "dist/index.js",
-      "import": "{ init, setUser, getSessionId, startNewSession, pauseReplay, resumeReplay, shutdown }",
+      "import": "{ init, setUser, getSessionId, startNewSession, recordException, pauseReplay, resumeReplay, shutdown }",
       "ignore": [
         "@opentelemetry"
       ],

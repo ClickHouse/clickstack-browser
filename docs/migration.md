@@ -72,17 +72,17 @@ With the script tag, load the file as the [README](../README.md#script-tag) show
 
 ## Methods
 
-| `@hyperdx/browser`                                                  | Now                               | Notes                                                                                                                                                     |
-| ------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HyperDX.init(options)`                                             | `init(options)`                   | Named imports instead of a default export.                                                                                                                |
-| `setGlobalAttributes(attributes)`                                   | `setUser(user)`                   | `setUser(null)` removes the user. See [User attributes](#user-attributes).                                                                                |
-| `addAction(name, attributes)`                                       | Removed                           | Create the span with the OpenTelemetry API: `trace.getTracer('app').startSpan(name, { attributes }).end()` (`ClickStack.otel.trace` with the script tag). |
-| `recordException(error, attributes)`                                | Removed                           | Emit an `exception` log record. See [Exceptions](#exceptions).                                                                                            |
-| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                           | Emit the record from your boundary. See [Exceptions](#exceptions).                                                                                        |
-| `getSessionId()`                                                    | `getSessionId()`                  | Returns `string \| null`: `null` until the session is restored or created, shortly after `init`.                                                          |
-| `stopSessionRecorder()`, `resumeSessionRecorder()`                  | `pauseReplay()`, `resumeReplay()` | Resuming starts with a full snapshot.                                                                                                                     |
-| `enableAdvancedNetworkCapture()`, `disableAdvancedNetworkCapture()` | Removed                           | See [Not offered](#not-offered).                                                                                                                          |
-| `getSessionUrl()`                                                   | Removed                           | Build the link to your ClickStack instance yourself.                                                                                                      |
+| `@hyperdx/browser`                                                  | Now                                  | Notes                                                                                                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HyperDX.init(options)`                                             | `init(options)`                      | Named imports instead of a default export.                                                                                                                |
+| `setGlobalAttributes(attributes)`                                   | `setUser(user)`                      | `setUser(null)` removes the user. See [User attributes](#user-attributes).                                                                                |
+| `addAction(name, attributes)`                                       | Removed                              | Create the span with the OpenTelemetry API: `trace.getTracer('app').startSpan(name, { attributes }).end()` (`ClickStack.otel.trace` with the script tag). |
+| `recordException(error, attributes)`                                | `recordException(error, attributes)` | Records an `exception` log event instead of a span. See [Exceptions](#exceptions).                                                                        |
+| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                              | Call `recordException` from your boundary. See [Exceptions](#exceptions).                                                                                 |
+| `getSessionId()`                                                    | `getSessionId()`                     | Returns `string \| null`: `null` until the session is restored or created, shortly after `init`.                                                          |
+| `stopSessionRecorder()`, `resumeSessionRecorder()`                  | `pauseReplay()`, `resumeReplay()`    | Resuming starts with a full snapshot.                                                                                                                     |
+| `enableAdvancedNetworkCapture()`, `disableAdvancedNetworkCapture()` | Removed                              | See [Not offered](#not-offered).                                                                                                                          |
+| `getSessionUrl()`                                                   | Removed                              | Build the link to your ClickStack instance yourself.                                                                                                      |
 
 ## Not offered
 
@@ -118,11 +118,17 @@ text in clear as before. What masking does not cover is listed under
 
 ### Exceptions
 
-`recordException` recorded a span. Record the `exception` log event instead, the same event the
-upstream errors instrumentation emits for uncaught errors, as
-[Caught errors](../README.md#caught-errors) shows. Call it where errors are caught, because caught
-errors never reach the errors instrumentation: from `componentDidCatch` of a React error boundary,
-from a `useEffect` in Next.js `app/error.tsx`, or from `app.config.errorHandler` in Vue.
+Errors are `exception` log events instead of spans: uncaught errors and unhandled rejections from
+the upstream errors instrumentation, and caught errors from `recordException`. Call it where errors
+are caught, because caught errors never reach the errors instrumentation: from `componentDidCatch`
+of a React error boundary, from a `useEffect` in Next.js `app/error.tsx`, or from
+`app.config.errorHandler` in Vue. See [Errors](../README.md#errors).
+
+- Failed loads of images, scripts, stylesheets and media are still recorded, as `exception` events
+  with the type `ResourceLoadError` and the URL in `url.full`.
+- Stack traces are the browser's raw stack text in `exception.stacktrace`. `@hyperdx/browser` sent
+  parsed frames in `exception.parsed_stacktrace`; parsing frames and looking up source maps are
+  left to ClickStack. Set `serviceVersion` to the release id you upload source maps with.
 
 ### User attributes
 
