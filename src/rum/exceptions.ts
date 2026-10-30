@@ -165,11 +165,13 @@ export const consoleExceptionProcessor: LogRecordProcessor = {
 };
 
 /**
- * Records an error your code caught, such as in a React error boundary, as an `exception` log
- * event: the same event that uncaught errors produce.
+ * Records an error your code caught, such as in a `try`/`catch`, as an `exception` log event: the
+ * same event that uncaught errors produce.
  *
  * @remarks
- * Does nothing before `init` has started or after `shutdown`. Inside an active span, the event is
+ * Errors passed to `console.error`, including React's reports of errors caught by error
+ * boundaries, are already recorded; calling this for them as well records them twice. Does nothing
+ * before `init` has started or after `shutdown`. Inside an active span, the event is
  * linked to that span.
  *
  * @example

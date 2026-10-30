@@ -1,6 +1,6 @@
 # @clickhouse/clickstack-browser
 
-Browser RUM and session replay for ClickStack,
+Browser RUM and session replay for ClickStack and ClickHouse Observability,
 built on the upstream OpenTelemetry browser SDK. `init` sets up the SDK with a fixed set of
 instrumentations and records a session replay. Apps that set up the SDK themselves use only
 `startReplay` ([Using the upstream SDK directly](#using-the-upstream-sdk-directly)).
@@ -102,8 +102,12 @@ Other functions:
 
 Uncaught errors, unhandled rejections, and failed loads of images, scripts, stylesheets and media
 are recorded as `exception` log events. `console.error` calls are console events. When an argument
-is an error, the event also carries its `exception.*` attributes, as for React's caught render
-errors. Record other errors your code catches with `recordException`:
+is an error, the event also carries its `exception.*` attributes. React reports errors caught by
+error boundaries this way, with `console.error(error)`, so a boundary needs no extra call.
+
+Record errors that never reach the console with `recordException`, such as in your own
+`try`/`catch`, Vue's `app.config.errorHandler`, a React `onCaughtError` override, or any page with
+`console: false`:
 
 ```ts
 import { recordException } from "@clickhouse/clickstack-browser";
@@ -122,6 +126,7 @@ try {
 - Errors thrown by a script from another origin, such as a CDN, arrive as `Script error.` with no
   message or stack, unless its `<script>` tag has `crossorigin="anonymous"` and the server sends
   `Access-Control-Allow-Origin`.
+- Calling `recordException` for an error that is also passed to `console.error` records it twice.
 - Inside an active span, `recordException` links the event to it. Browsers lose the active span
   after an `await`.
 

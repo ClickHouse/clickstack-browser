@@ -78,7 +78,7 @@ With the script tag, load the file as the [README](../README.md#script-tag) show
 | `setGlobalAttributes(attributes)`                                   | `setUser(user)`                      | `setUser(null)` removes the user. See [User attributes](#user-attributes).                                                                                |
 | `addAction(name, attributes)`                                       | Removed                              | Create the span with the OpenTelemetry API: `trace.getTracer('app').startSpan(name, { attributes }).end()` (`ClickStack.otel.trace` with the script tag). |
 | `recordException(error, attributes)`                                | `recordException(error, attributes)` | Records an `exception` log event instead of a span. See [Exceptions](#exceptions).                                                                        |
-| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                              | Call `recordException` from your boundary. See [Exceptions](#exceptions).                                                                                 |
+| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                              | Not needed: React reports errors caught by boundaries with `console.error`, which is recorded with the error. See [Exceptions](#exceptions).              |
 | `getSessionId()`                                                    | `getSessionId()`                     | Returns `string \| null`: `null` until the session is restored or created, shortly after `init`.                                                          |
 | `stopSessionRecorder()`, `resumeSessionRecorder()`                  | `pauseReplay()`, `resumeReplay()`    | Resuming starts with a full snapshot.                                                                                                                     |
 | `enableAdvancedNetworkCapture()`, `disableAdvancedNetworkCapture()` | Removed                              | See [Not offered](#not-offered).                                                                                                                          |
@@ -119,10 +119,13 @@ text in clear as before. What masking does not cover is listed under
 ### Exceptions
 
 Errors are `exception` log events instead of spans: uncaught errors and unhandled rejections from
-the upstream errors instrumentation, and caught errors from `recordException`. Call it where errors
-are caught, because caught errors never reach the errors instrumentation: from `componentDidCatch`
-of a React error boundary, from a `useEffect` in Next.js `app/error.tsx`, or from
-`app.config.errorHandler` in Vue. See [Errors](../README.md#errors).
+the upstream errors instrumentation, and caught errors from `recordException`. React reports errors
+caught by error boundaries with `console.error(error)`, which is recorded with the error's
+`exception.*` attributes, so boundaries need no call; adding `recordException` there records each
+error twice. Call it where caught errors never reach the console: your own `try`/`catch`,
+`app.config.errorHandler` in Vue (setting it replaces Vue's console logging), React's
+`onCaughtError` when you override it, or anywhere with `console: false`. See
+[Errors](../README.md#errors).
 
 - Failed loads of images, scripts, stylesheets and media are still recorded, as `exception` events
   with the type `ResourceLoadError` and the URL in `url.full`.

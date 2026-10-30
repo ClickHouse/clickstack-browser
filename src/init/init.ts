@@ -75,7 +75,7 @@ export interface ClickStackBrowserOptions {
   /**
    * OTLP/HTTP base URL of the collector, for example `https://example-collector.clickhouse.com:4318`, or a
    * same-origin proxy path such as `/otel`. `/v1/traces` and `/v1/logs` are appended to its path,
-   * and a relative value resolves against the page URL.
+   * and a relative value resolves against the page URL. Available in ClickStack / ClickHouse Observability.
    */
   endpoint: string;
   /**
