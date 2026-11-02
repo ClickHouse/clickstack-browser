@@ -39,8 +39,10 @@ import { pageState } from "../internal/global.ts";
 import { createReplayProvider } from "../replay/exporter.ts";
 import { Recorder } from "../replay/recorder.ts";
 import {
+  consoleExceptionProcessor,
   exceptionAttributes,
   listenForResourceErrors,
+  serializeConsoleArgs,
 } from "../rum/exceptions.ts";
 import {
   createUrlSanitizerLogRecordProcessor,
@@ -64,31 +66,6 @@ const CONSOLE_METHODS: Record<ConsoleLevel, ConsoleMethod[]> = {
   debug: ["error", "warn", "info", "log", "debug"],
 };
 
-// Upstream's default serializer JSON-encodes objects, which turns an Error into "{}". This one
-// writes errors as their message and stack, and everything else as upstream does.
-function serializeConsoleArgs(args: unknown[]): string {
-  return args
-    .map((arg) => {
-      if (arg instanceof Error) {
-        const text = String(arg);
-        // Chromium's stack starts with the message; Firefox and Safari list only the frames.
-        if (arg.stack === undefined || arg.stack.startsWith(text)) {
-          return arg.stack ?? text;
-        }
-        return `${text}\n${arg.stack}`;
-      }
-      if (typeof arg === "object" && arg !== null) {
-        try {
-          return JSON.stringify(arg);
-        } catch {
-          return Object.prototype.toString.call(arg);
-        }
-      }
-      return String(arg);
-    })
-    .join(" ");
-}
-
 /**
  * Options of {@link init}.
  *
@@ -98,7 +75,7 @@ export interface ClickStackBrowserOptions {
   /**
    * OTLP/HTTP base URL of the collector, for example `https://example-collector.clickhouse.com:4318`, or a
    * same-origin proxy path such as `/otel`. `/v1/traces` and `/v1/logs` are appended to its path,
-   * and a relative value resolves against the page URL.
+   * and a relative value resolves against the page URL. Available in ClickStack / ClickHouse Observability.
    */
   endpoint: string;
   /**
@@ -322,6 +299,7 @@ async function start(
         createSessionLogRecordProcessor(sessionManager),
         createDocumentLogRecordProcessor(documentProvider),
         userLogRecordProcessor,
+        consoleExceptionProcessor,
         ...(sanitizeUrl
           ? [createUrlSanitizerLogRecordProcessor(sanitizeUrl)]
           : []),
