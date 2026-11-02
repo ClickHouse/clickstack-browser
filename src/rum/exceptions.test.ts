@@ -146,6 +146,36 @@ test("a console record gets exception attributes from an error argument, and no 
   expect(consoleRecords[0]?.attributes["exception.type"]).toBe("Error");
 });
 
+test("console bodies apply format codes the way the browser console does", () => {
+  const error = new Error("boom");
+
+  // React 19's development report of an error caught by an error boundary
+  expect(
+    serializeConsoleArgs([
+      "%o\n\n%s\n\n%s\n",
+      error,
+      "The above error occurred in the <X> component.",
+      "React will try to recreate this component tree.",
+    ]),
+  ).toBe(
+    `${String(error.stack)}\n\nThe above error occurred in the <X> component.\n\nReact will try to recreate this component tree.\n`,
+  );
+  expect(
+    serializeConsoleArgs(["%cDownload the React DevTools", "font-weight:bold"]),
+  ).toBe("Download the React DevTools");
+  expect(serializeConsoleArgs(["a %s b", "x", "y", 1])).toBe("a x b y 1");
+  expect(serializeConsoleArgs(["100%"])).toBe("100%");
+  expect(serializeConsoleArgs(["%s"])).toBe("%s");
+  expect(serializeConsoleArgs(["%d items, %f ms, 50%%", "3", "1.5"])).toBe(
+    "3 items, 1.5 ms, 50%",
+  );
+  expect(serializeConsoleArgs(["%s and %s", "one"])).toBe("one and %s");
+  expect(serializeConsoleArgs(["%i %x %O", "42.9px", { a: 1 }])).toBe(
+    '42 %x {"a":1}',
+  );
+  expect(serializeConsoleArgs([{ a: 1 }, "%s"])).toBe('{"a":1} %s');
+});
+
 test("recordException emits an exception event with the given attributes", () => {
   recordException(new Error("boom"), { "app.operation": "checkout" });
 
