@@ -111,9 +111,11 @@ function toText(value: unknown): string {
 let consoleError: Error | undefined;
 
 /**
- * Serializes console arguments into the log body: errors as their message and stack (upstream's
- * default JSON-encodes them, which gives `{}`), everything else as upstream does. Remembers the
- * first error for {@link consoleExceptionProcessor}.
+ * Serializes console arguments into the log body as the browser console shows them. Format codes
+ * in a leading string take the arguments that follow (the Console Standard's Formatter, as in
+ * Node's `util.format`), errors appear as their message and stack (upstream's default JSON-encodes
+ * them, which gives `{}`), and other values as upstream writes them. Remembers the first error for
+ * {@link consoleExceptionProcessor}.
  *
  * @param args - The console call's arguments.
  * @returns The log body.
@@ -122,23 +124,63 @@ let consoleError: Error | undefined;
 export function serializeConsoleArgs(args: unknown[]): string {
   consoleError = args.find((arg): arg is Error => arg instanceof Error);
 
-  return args
-    .map((arg) => {
-      if (arg instanceof Error) {
-        return errorText(arg);
+  const [first, ...rest] = args;
+  if (typeof first !== "string" || rest.length === 0) {
+    return args.map(consoleText).join(" ");
+  }
+
+  let used = 0;
+  const formatted = first.replace(
+    /%(.)/g,
+    (code: string, specifier: string) => {
+      if (specifier === "%") {
+        return "%";
+      }
+      if (used >= rest.length) {
+        return code;
       }
 
-      if (typeof arg === "object" && arg !== null) {
-        try {
-          return JSON.stringify(arg);
-        } catch {
-          return Object.prototype.toString.call(arg);
-        }
+      switch (specifier) {
+        case "s":
+        case "o":
+        case "O":
+          return consoleText(rest[used++]);
+        case "d":
+        case "i":
+          return numberText(rest[used++], (text) => Number.parseInt(text, 10));
+        case "f":
+          return numberText(rest[used++], Number.parseFloat);
+        case "c":
+          // CSS for the browser console; it has no text
+          used++;
+          return "";
+        default:
+          return code;
       }
+    },
+  );
 
-      return String(arg);
-    })
-    .join(" ");
+  return [formatted, ...rest.slice(used).map(consoleText)].join(" ");
+}
+
+function numberText(arg: unknown, parse: (text: string) => number): string {
+  return typeof arg === "symbol" ? "NaN" : String(parse(String(arg)));
+}
+
+function consoleText(arg: unknown): string {
+  if (arg instanceof Error) {
+    return errorText(arg);
+  }
+
+  if (typeof arg === "object" && arg !== null) {
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return Object.prototype.toString.call(arg);
+    }
+  }
+
+  return String(arg);
 }
 
 /**

@@ -101,9 +101,10 @@ Other functions:
 ## Errors
 
 Uncaught errors, unhandled rejections, and failed loads of images, scripts, stylesheets and media
-are recorded as `exception` log events. `console.error` calls are console events. When an argument
-is an error, the event also carries its `exception.*` attributes. React reports errors caught by
-error boundaries this way, with `console.error(error)`, so a boundary needs no extra call.
+are recorded as `exception` log events. `console.error` calls are console events, with bodies
+formatted as the browser console shows them. When an argument is an error, the event also carries
+its `exception.*` attributes. React reports errors caught by error boundaries this way, with
+`console.error(error)`, so a boundary needs no extra call.
 
 Record errors that never reach the console with `recordException`, such as in your own
 `try`/`catch`, Vue's `app.config.errorHandler`, a React `onCaughtError` override, or any page with
