@@ -1,11 +1,4 @@
-import {
-  context,
-  diag,
-  ROOT_CONTEXT,
-  type Context,
-  type ContextManager,
-} from "@opentelemetry/api";
-import { isTracingSuppressed } from "@opentelemetry/core";
+import { diag } from "@opentelemetry/api";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { OtlpJsonExporter } from "./otlp-exporter.ts";
 
@@ -17,24 +10,6 @@ const serializer = {
     new TextEncoder().encode(JSON.stringify(items)),
 };
 
-// A minimal synchronous context manager, so context.with() works as in the browser SDK
-let active: Context = ROOT_CONTEXT;
-const manager: ContextManager = {
-  active: () => active,
-  with: (ctx, fn, thisArg, ...args) => {
-    const previous = active;
-    active = ctx;
-    try {
-      return fn.call(thisArg, ...args);
-    } finally {
-      active = previous;
-    }
-  },
-  bind: (_ctx, target) => target,
-  enable: () => manager,
-  disable: () => manager,
-};
-
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 const warn = vi.fn();
 
@@ -43,7 +18,6 @@ beforeEach(() => {
     Promise.resolve(new Response(null, { status: 200 })),
   );
   vi.stubGlobal("fetch", fetchMock);
-  context.setGlobalContextManager(manager);
   diag.setLogger({
     error: vi.fn(),
     warn,
@@ -55,8 +29,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   warn.mockReset();
-  context.disable();
   diag.disable();
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
@@ -82,35 +56,15 @@ function exportItems(
   });
 }
 
-test("posts the serialized body with the key, outside any trace, without keepalive while visible, and reads the response", async () => {
-  let suppressed = false;
-  const response = new Response("{}", { status: 200 });
-  fetchMock.mockImplementation(() => {
-    suppressed = isTracingSuppressed(context.active());
-    return Promise.resolve(response);
-  });
+async function gunzip(body: BodyInit | null | undefined): Promise<string> {
+  const stream = new Blob([body as Uint8Array<ArrayBuffer>])
+    .stream()
+    .pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
 
-  expect(
-    await exportItems(new OtlpJsonExporter(URL_, "key-1", serializer), ["a"]),
-  ).toBe(0);
-
-  const [url, init] = fetchMock.mock.calls[0] ?? [];
-
-  expect(url).toBe(URL_);
-  expect(init).toMatchObject({
-    method: "POST",
-    keepalive: false,
-    headers: { authorization: "key-1", "content-type": "application/json" },
-  });
-  expect(new TextDecoder().decode(init?.body as Uint8Array)).toBe('["a"]');
-  expect(suppressed).toBe(true);
-  expect(response.bodyUsed).toBe(true);
-});
-
-test("uses keepalive while hidden within the shared limits, and sends again without it when rejected", async () => {
-  setHidden();
-  const exporter = new OtlpJsonExporter(URL_, undefined, serializer);
-  // Responses wait, so every request is in flight at once and shares the limits
+// Responses wait until respond() is called, so requests stay in flight and share the limits
+function holdResponses(): () => void {
   let respond = (): void => undefined;
   const responded = new Promise<void>((resolve) => {
     respond = resolve;
@@ -119,33 +73,60 @@ test("uses keepalive while hidden within the shared limits, and sends again with
     responded.then(() => new Response(null, { status: 200 })),
   );
 
-  const big = "x".repeat(40 * 1024);
-  const sent = [
-    exportItems(exporter, [big]),
-    exportItems(exporter, [big]),
-    ...Array.from({ length: 9 }, () => exportItems(exporter, ["small"])),
-  ];
-  await vi.waitFor(() => {
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+  return respond;
+}
+
+test("posts the gzip-compressed serialized body with the key, without keepalive while visible", async () => {
+  expect(
+    await exportItems(new OtlpJsonExporter(URL_, "key-1", serializer), ["a"]),
+  ).toBe(0);
+
+  const [url, init] = fetchMock.mock.calls[0] ?? [];
+  expect(url).toBe(URL_);
+  expect(init).toMatchObject({
+    method: "POST",
+    keepalive: false,
+    headers: {
+      authorization: "key-1",
+      "content-type": "application/json",
+      "content-encoding": "gzip",
+    },
   });
-  respond();
-  await Promise.all(sent);
+  expect(await gunzip(init?.body)).toBe('["a"]');
+});
 
-  const keepalive = fetchMock.mock.calls.map(([, init]) => init?.keepalive);
-  // The second 40 KiB body would exceed 60 KiB, and the tenth request Chromium's 9
-  expect(keepalive.slice(0, 2)).toEqual([true, false]);
-  expect(keepalive.filter(Boolean)).toHaveLength(9);
+test("asks for keepalive while the page is hidden", async () => {
+  setHidden();
 
-  fetchMock.mockReset();
-  fetchMock.mockRejectedValueOnce(new TypeError("keepalive quota"));
-  fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
-  await exportItems(exporter, ["after"]);
+  await exportItems(new OtlpJsonExporter(URL_, undefined, serializer), ["a"]);
 
-  expect(fetchMock.mock.calls.map(([, init]) => init?.keepalive)).toEqual([
-    true,
-    false,
-  ]);
-  expect(warn).not.toHaveBeenCalled();
+  expect(fetchMock.mock.calls[0]?.[1]?.keepalive).toBe(true);
+});
+
+test("reports success and settles after a collector never answers", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  fetchMock.mockImplementation(
+    (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(init.signal?.reason as Error);
+        });
+      }),
+  );
+  const exporter = new OtlpJsonExporter(URL_, undefined, serializer);
+
+  const exported = exportItems(exporter, ["a"]);
+  await vi.waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  await vi.advanceTimersByTimeAsync(10_000);
+
+  expect(await exported).toBe(0);
+
+  await exporter.forceFlush();
+  await exporter.shutdown();
+
+  expect(warn).toHaveBeenCalledOnce();
 });
 
 test("logs one warning however many requests fail, and still reports success", async () => {
@@ -153,7 +134,6 @@ test("logs one warning however many requests fail, and still reports success", a
   const exporter = new OtlpJsonExporter(URL_, undefined, serializer);
 
   expect(await exportItems(exporter, ["a"])).toBe(0);
-
   fetchMock.mockRejectedValue(new TypeError("offline"));
   await exportItems(exporter, ["b"]);
 
@@ -162,14 +142,7 @@ test("logs one warning however many requests fail, and still reports success", a
 });
 
 test("forceFlush waits for requests in flight", async () => {
-  let respond = (): void => undefined;
-  fetchMock.mockReturnValue(
-    new Promise((resolve) => {
-      respond = () => {
-        resolve(new Response(null, { status: 200 }));
-      };
-    }),
-  );
+  const respond = holdResponses();
   const exporter = new OtlpJsonExporter(URL_, undefined, serializer);
   exporter.export(["a"], () => undefined);
 
@@ -177,7 +150,6 @@ test("forceFlush waits for requests in flight", async () => {
   const flushing = exporter.forceFlush().then(() => {
     flushed = true;
   });
-
   await vi.waitFor(() => {
     expect(fetchMock).toHaveBeenCalled();
   });
@@ -185,6 +157,5 @@ test("forceFlush waits for requests in flight", async () => {
 
   respond();
   await flushing;
-
   expect(flushed).toBe(true);
 });

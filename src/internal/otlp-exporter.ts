@@ -1,27 +1,17 @@
-import { context, diag } from "@opentelemetry/api";
-import {
-  ExportResultCode,
-  suppressTracing,
-  type ExportResult,
-} from "@opentelemetry/core";
-
-// The browser's keepalive limits per page: about 64 KiB of bodies (60 KiB leaves room for headers)
-// and, in Chromium, 9 requests at a time. Shared by the traces and logs exporters.
-const KEEPALIVE_MAX_BYTES = 60 * 1024;
-const KEEPALIVE_MAX_REQUESTS = 9;
-let keepaliveBytes = 0;
-let keepaliveRequests = 0;
+import { diag } from "@opentelemetry/api";
+import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
+import { gzip, post } from "./transport.ts";
 
 /**
- * Sends OTLP/JSON request bodies built by an upstream serializer, such as `JsonTraceSerializer`,
- * with `fetch`.
+ * Sends gzip-compressed OTLP/JSON request bodies built by an upstream serializer, such as
+ * `JsonTraceSerializer`, with `fetch`.
  *
  * @remarks
- * Upstream's browser transport sets `keepalive` on every request that fits the browser's limits.
- * Chromium counts a keepalive request against the page's 64 KiB budget until its response body is
- * read, so exports during a burst use up the budget, get rejected and retried with backoff, and the
- * final flush when the user leaves finds no room. This exporter sets `keepalive` only while the
- * page is hidden, the one time a request has to outlive the page. Failed exports are not retried.
+ * Upstream's browser transport sets `keepalive` on every request that fits its limits and never
+ * reads the response, which Chromium counts against the page's 64 KiB budget until then. With small
+ * batches, exports during a burst use up the budget and the final flush when the user leaves finds
+ * no room. This exporter asks for `keepalive` only while the page is hidden, the one time a request
+ * has to outlive the page. Failed exports are not retried.
  *
  * @internal
  */
@@ -50,6 +40,7 @@ export class OtlpJsonExporter<T> {
     this.#headers = {
       ...(apiKey ? { authorization: apiKey } : {}),
       "content-type": "application/json",
+      "content-encoding": "gzip",
     };
     this.#serializer = serializer;
   }
@@ -82,58 +73,22 @@ export class OtlpJsonExporter<T> {
     return this.forceFlush();
   }
 
-  async #post(body: Uint8Array): Promise<void> {
-    const keepalive =
-      document.visibilityState === "hidden" &&
-      keepaliveBytes + body.byteLength <= KEEPALIVE_MAX_BYTES &&
-      keepaliveRequests < KEEPALIVE_MAX_REQUESTS;
-    if (keepalive) {
-      keepaliveBytes += body.byteLength;
-      keepaliveRequests++;
-    }
-
+  async #post(json: Uint8Array): Promise<void> {
     try {
-      const response = await this.#fetch(body, keepalive).catch(
-        (error: unknown) => {
-          // The browser rejects keepalive requests beyond its limits. Without keepalive the
-          // request still arrives unless the page is unloading.
-          if (keepalive) {
-            return this.#fetch(body, false);
-          }
-
-          throw error;
-        },
+      // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
+      const body = await gzip(json as Uint8Array<ArrayBuffer>);
+      const response = await post(
+        this.#url,
+        this.#headers,
+        body,
+        document.visibilityState === "hidden",
       );
-
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }
-
-      // Chromium counts a keepalive request against the budget until its body is read. Cancelling
-      // the body instead would show every export as failed in DevTools.
-      await response.arrayBuffer();
     } catch (error) {
       this.#warn(error);
-    } finally {
-      if (keepalive) {
-        keepaliveBytes -= body.byteLength;
-        keepaliveRequests--;
-      }
     }
-  }
-
-  #fetch(body: Uint8Array, keepalive: boolean): Promise<Response> {
-    // Set right at the call since context does not survive the awaits before it, and the
-    // upstream fetch instrumentation would otherwise trace this request.
-    return context.with(suppressTracing(context.active()), () =>
-      fetch(this.#url, {
-        method: "POST",
-        headers: this.#headers,
-        // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
-        body: body as Uint8Array<ArrayBuffer>,
-        keepalive,
-      }),
-    );
   }
 
   #warn(reason: unknown): void {

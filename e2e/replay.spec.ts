@@ -80,14 +80,18 @@ test("records a small page and sends decodable rr-web records under the page ses
 
   page.on("pageerror", (error) => errors.push(error.message));
 
-  const replayContentTypes: (string | undefined)[] = [];
+  // The content type and encoding of every export request
+  const encodings = new Set<string>();
 
   page.on("request", (request) => {
     if (
-      request.url().endsWith("/v1/logs") &&
-      request.headers()["content-encoding"] === "gzip"
+      request.method() === "POST" &&
+      /\/v1\/(?:logs|traces)$/.test(request.url())
     ) {
-      replayContentTypes.push(request.headers()["content-type"]);
+      const headers = request.headers();
+      encodings.add(
+        `${String(headers["content-type"])} ${String(headers["content-encoding"])}`,
+      );
     }
   });
 
@@ -142,8 +146,7 @@ test("records a small page and sends decodable rr-web records under the page ses
     .toBe(true);
 
   expect(sessionId).toBe(stored);
-  expect(replayContentTypes.length).toBeGreaterThan(0);
-  expect(new Set(replayContentTypes)).toEqual(new Set(["application/json"]));
+  expect(encodings).toEqual(new Set(["application/json gzip"]));
   expect(records.rum.length).toBeGreaterThan(0);
 
   for (const record of [...records.replay, ...records.rum]) {

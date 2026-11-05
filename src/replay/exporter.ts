@@ -1,14 +1,5 @@
-import {
-  context,
-  diag,
-  type Attributes,
-  type HrTime,
-} from "@opentelemetry/api";
-import {
-  ExportResultCode,
-  suppressTracing,
-  type ExportResult,
-} from "@opentelemetry/core";
+import { diag, type Attributes, type HrTime } from "@opentelemetry/api";
+import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import {
   defaultResource,
   resourceFromAttributes,
@@ -19,11 +10,13 @@ import {
   type LogRecordExporter,
   type ReadableLogRecord,
 } from "@opentelemetry/sdk-logs";
+import { gzip, post } from "../internal/transport.ts";
 
 // Keeps requests far below the collector's default body limit
 const MAX_REQUEST_CHARS = 4 * 1024 * 1024;
 
-// Browsers allow ~64 KiB of in-flight keepalive bodies per page (shared with the RUM exporters)
+// Replay's share of the keepalive budget that all exporters share, so a long replay pending when
+// the page is hidden leaves room for the last traces and logs
 const KEEPALIVE_MAX_BYTES = 32 * 1024;
 
 type Batch = [ReadableLogRecord, ...ReadableLogRecord[]];
@@ -98,46 +91,6 @@ export function toOtlpJson(
       },
     ],
   });
-}
-
-/**
- * Compresses `data` with the browser's gzip `CompressionStream`.
- *
- * @remarks
- * Reads the output with a reader loop. In Chromium, `new Response(stream).arrayBuffer()` does not
- * finish while the page is being hidden, which is exactly when the final batch is sent.
- *
- * @param data - The bytes to compress.
- * @returns The gzip bytes.
- * @internal
- */
-export async function gzip(
-  data: Uint8Array<ArrayBuffer>,
-): Promise<Uint8Array<ArrayBuffer>> {
-  const stream = new CompressionStream("gzip");
-  const writer = stream.writable.getWriter();
-
-  // Not awaited before reading. A large write waits for the reader (for backpressure)
-  const written = writer.write(data).then(() => writer.close());
-  const reader = stream.readable.getReader();
-  const parts: Uint8Array[] = [];
-  let size = 0;
-
-  for (let read = await reader.read(); !read.done; read = await reader.read()) {
-    parts.push(read.value);
-    size += read.value.byteLength;
-  }
-
-  await written;
-
-  const result = new Uint8Array(size);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.byteLength;
-  }
-
-  return result;
 }
 
 function* bySize(records: readonly ReadableLogRecord[]): Generator<Batch> {
@@ -266,8 +219,8 @@ export class ReplayExporter implements LogRecordExporter {
     for (const batch of bySize(records)) {
       if (document.visibilityState === "hidden") {
         // This is the final flush. Only keepalive requests outlive the page, and the browser caps
-        // their bodies. Every part is sent at once, with keepalive while this exporter's share of
-        // the cap lasts. Parts beyond it are lost if the page unloads.
+        // their bodies. Every part is sent at once, with keepalive while this exporter's share and
+        // the shared budget last. Parts beyond them are lost if the page unloads.
         const bodies = await keepaliveBodies(batch);
         await Promise.all(bodies.map((body) => this.#post(body, true)));
       } else {
@@ -277,50 +230,24 @@ export class ReplayExporter implements LogRecordExporter {
   }
 
   async #post(body: Uint8Array<ArrayBuffer>, hidden: boolean): Promise<void> {
-    const keepalive =
+    const withinShare =
       hidden && this.#keepaliveBytes + body.byteLength <= KEEPALIVE_MAX_BYTES;
-    if (keepalive) {
+    if (withinShare) {
       this.#keepaliveBytes += body.byteLength;
     }
 
     try {
-      const response = await this.#fetch(body, keepalive).catch(
-        (error: unknown) => {
-          // The browser rejects keepalive requests beyond its shared quota.
-          // Without keepalive the request still arrives unless the page is unloading.
-          if (keepalive) {
-            return this.#fetch(body, false);
-          }
-
-          throw error;
-        },
-      );
-
-      // An unread body holds the connection and Chromium's keepalive quota until collected.
-      void response.body?.cancel();
+      const response = await post(this.#url, this.#headers, body, withinShare);
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }
     } catch (error) {
       this.#warn(error);
     } finally {
-      if (keepalive) {
+      if (withinShare) {
         this.#keepaliveBytes -= body.byteLength;
       }
     }
-  }
-
-  #fetch(body: Uint8Array<ArrayBuffer>, keepalive: boolean): Promise<Response> {
-    // Set right at the call since context does not survive the awaits before it, and the
-    // upstream fetch instrumentation would otherwise trace this request.
-    return context.with(suppressTracing(context.active()), () =>
-      fetch(this.#url, {
-        method: "POST",
-        headers: this.#headers,
-        body,
-        keepalive,
-      }),
-    );
   }
 
   #warn(reason: unknown): void {

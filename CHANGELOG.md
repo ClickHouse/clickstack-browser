@@ -1,21 +1,30 @@
 # Changelog
 
-## 1.1.1
+## 1.2.0
+
+### Changed
+
+- Traces and logs are sent gzip-compressed, as replay already was, so several times more telemetry
+  fits in what a closing page can still send. A proxy in front of the collector must forward the
+  body and its `Content-Encoding` header unchanged. The OpenTelemetry Collector and ClickStack
+  accept gzip.
+- Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
 
 ### Fixed
 
 - Traces and logs lost when the user reloaded, closed the tab or navigated away after a burst of
-  telemetry, such as a page load with many requests. Upstream's exporter sent every request with
-  `keepalive`, and Chromium counts a keepalive request against the page's 64 KiB budget until its
-  response is read, so exports during the burst used up the budget, were rejected and retried with
-  backoff, and the final flush found no room. Traces and logs now use `keepalive` only while the
-  page is hidden, through this package's own exporter built on the upstream OTLP/JSON serializers.
-- Traces and logs are sent in batches of up to 16 records instead of upstream's 512, so a burst no
-  longer leaves one batch larger than the limit pending. Very large records can still exceed it.
-
-### Changed
-
-- Failed trace and log exports are not retried, as for replay. One warning is logged.
+  telemetry, such as a page load with many requests. Upstream sent batches of up to 512 records,
+  which grew past what a closing page can send with `keepalive` (64 KiB, shared by traces and
+  logs) and were then lost whole. Traces and logs now go through this package's own exporter, built
+  on the upstream OTLP/JSON serializers: batches of up to 16 records, gzip-compressed, with
+  `keepalive` only while the page is hidden, so exports during the burst leave the budget to the
+  final flush. All exporters share one budget, replay included. A batch still exceeds it when its
+  records average more than about 3.8 KB compressed.
+- Export requests, replay included, give up after 10 seconds. A collector that accepted the
+  connection and never answered kept them open, which stopped log export, and with a same-origin
+  endpoint they could take up the browser's connections to the page's own server.
+- Replay requests showed as failed in DevTools, because the replay exporter cancelled each
+  response body. It now reads it.
 
 ### Docs
 

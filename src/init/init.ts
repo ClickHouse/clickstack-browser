@@ -380,8 +380,8 @@ async function start(
   ];
 
   const documentProvider = createLocationDocumentProvider(sanitize);
-  // No exportConfig: batches go through our exporter instead of upstream's, so keepalive is used
-  // only while the page is hidden
+  // No exportConfig: batches go through our exporter instead of upstream's, gzip-compressed and
+  // with keepalive only while the page is hidden
   run.sdk = startBrowserSdk({
     logLevel: "WARN",
     resourceAttributes,

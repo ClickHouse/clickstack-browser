@@ -254,8 +254,8 @@ const replay = startReplay({
 - Log events: `browser.navigation`, `browser.user_action.click`, `browser.web_vital`,
   `browser.console`, `exception`, `browser.navigation_timing` and `browser.resource_timing`. Fetch
   and XHR requests and long tasks are spans.
-- Replay: gzip-compressed log records with the scope `rum.rr-web`, sent to the logs URL. A collector
-  between the page and ClickStack must keep their attributes unchanged.
+- Replay: log records with the scope `rum.rr-web`, sent to the logs URL. A collector between the
+  page and ClickStack must keep their attributes unchanged.
 
 ## Lifecycle
 
@@ -264,10 +264,12 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent in batches of up to 16 records, and when the page is hidden. Browsers limit
-  what a closing page can still send to 64 KiB in total, so after a burst of activity, such as a
-  page load with many requests, or during a long replay, the last records can be lost when the user
-  leaves. Failed requests are not retried.
+- Telemetry is sent as gzip-compressed OTLP/JSON in batches of up to 16 records, and when the page
+  is hidden. A proxy in front of the collector must forward the body and its `Content-Encoding`
+  header unchanged. Browsers limit what a closing page can still send to 64 KiB in total, so after
+  a burst of activity, such as a page load with many requests, or during a long replay, the last
+  records can be lost when the user leaves. Failed requests are not retried, and requests give up
+  after 10 seconds.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 

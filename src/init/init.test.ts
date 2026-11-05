@@ -46,16 +46,29 @@ function sentTo(path: string): Request[] {
   return requests.filter((r) => r.url.endsWith(path));
 }
 
-function isReplay(request: Request): boolean {
-  return new Headers(request.init?.headers).get("content-encoding") === "gzip";
+async function gunzip(body: unknown): Promise<string> {
+  const stream = new Blob([body as Uint8Array<ArrayBuffer>])
+    .stream()
+    .pipeThrough(new DecompressionStream("gzip"));
+
+  return new Response(stream).text();
 }
 
-// The upstream RUM exporters send uncompressed OTLP/JSON as bytes.
-function jsonBodies(path: string): string {
-  return sentTo(path)
-    .filter((r) => !isReplay(r))
-    .map((r) => new TextDecoder().decode(r.init?.body as Uint8Array))
-    .join("\n");
+// Every exporter sends gzip-compressed OTLP/JSON
+function bodiesSentTo(path: string): Promise<string[]> {
+  return Promise.all(sentTo(path).map((r) => gunzip(r.init?.body)));
+}
+
+function isReplay(body: string): boolean {
+  return body.includes('"name":"rum.rr-web"');
+}
+
+async function rumBodies(path: string): Promise<string> {
+  return (await bodiesSentTo(path)).filter((b) => !isReplay(b)).join("\n");
+}
+
+async function replayBodies(): Promise<string[]> {
+  return (await bodiesSentTo("/otel/v1/logs")).filter(isReplay);
 }
 
 interface OtlpJson {
@@ -63,11 +76,9 @@ interface OtlpJson {
   resourceLogs?: { scopeLogs: { logRecords: unknown[] }[] }[];
 }
 
-// The number of spans or log records in one uncompressed OTLP/JSON request
-function recordCount(request: Request | undefined): number {
-  const json = JSON.parse(
-    new TextDecoder().decode(request?.init?.body as Uint8Array),
-  ) as OtlpJson;
+// The number of spans or log records in one OTLP/JSON request body
+function recordCount(body: string | undefined): number {
+  const json = JSON.parse(body ?? "{}") as OtlpJson;
   const spans = (json.resourceSpans ?? []).flatMap((r) =>
     r.scopeSpans.flatMap((s) => s.spans),
   );
@@ -76,14 +87,6 @@ function recordCount(request: Request | undefined): number {
   );
 
   return spans.length + records.length;
-}
-
-async function gunzip(body: unknown): Promise<string> {
-  const stream = new Blob([body as Uint8Array<ArrayBuffer>])
-    .stream()
-    .pipeThrough(new DecompressionStream("gzip"));
-
-  return new Response(stream).text();
 }
 
 beforeEach(() => {
@@ -144,7 +147,7 @@ test("sends spans with the session, the user and the resource to the endpoint", 
   const [traces] = sentTo("/otel/v1/traces");
   expect(traces?.url).toBe(`${location.origin}/otel/v1/traces`);
   expect(new Headers(traces?.init?.headers).get("authorization")).toBe("key-1");
-  const body = jsonBodies("/otel/v1/traces");
+  const body = await rumBodies("/otel/v1/traces");
   expect(body).toContain(
     '"key":"session.id","value":{"stringValue":"' + sessionId + '"}',
   );
@@ -158,7 +161,7 @@ test("sends spans with the session, the user and the resource to the endpoint", 
   expect(body).toContain(
     '"key":"telemetry.distro.name","value":{"stringValue":"clickstack-browser"}',
   );
-  expect(sentTo("/otel/v1/logs").some(isReplay)).toBe(false);
+  expect(await replayBodies()).toEqual([]);
   expect(module.getSessionId()).toBeNull();
 });
 
@@ -201,7 +204,8 @@ test("records the environment, and passes every URL through sanitizeUrl", async 
   await new Promise((resolve) => setTimeout(resolve, 50));
   await module.shutdown();
 
-  const rum = jsonBodies("/otel/v1/traces") + jsonBodies("/otel/v1/logs");
+  const rum =
+    (await rumBodies("/otel/v1/traces")) + (await rumBodies("/otel/v1/logs"));
   expect(rum).toContain(
     '"key":"deployment.environment.name","value":{"stringValue":"staging"}',
   );
@@ -216,9 +220,7 @@ test("records the environment, and passes every URL through sanitizeUrl", async 
   expect(rum).toContain('"eventName":"browser.navigation_timing"');
   expect(rum).not.toContain(location.origin);
 
-  const replay = await gunzip(
-    sentTo("/otel/v1/logs").find(isReplay)?.init?.body,
-  );
+  const [replay] = await replayBodies();
   expect(replay).toContain(
     '"key":"deployment.environment.name","value":{"stringValue":"staging"}',
   );
@@ -248,8 +250,10 @@ test("sends traces and logs to their own endpoints, replay included", async () =
         "https://traces.example-collector.clickhouse.com/custom/traces",
     ),
   ).toBe(true);
-  expect(requests.some((r) => r.url === logsUrl && isReplay(r))).toBe(true);
-  expect(requests.some((r) => r.url === logsUrl && !isReplay(r))).toBe(true);
+  const logs = await bodiesSentTo("/collector/logs");
+  expect(sentTo("/collector/logs").every((r) => r.url === logsUrl)).toBe(true);
+  expect(logs.some(isReplay)).toBe(true);
+  expect(logs.some((b) => !isReplay(b))).toBe(true);
 });
 
 test("a signal endpoint replaces only its own URL", async () => {
@@ -294,7 +298,7 @@ test("records resource attributes, which explicit options win over", async () =>
   await new Promise((resolve) => setTimeout(resolve, 50));
   await module.shutdown();
 
-  const traces = jsonBodies("/otel/v1/traces");
+  const traces = await rumBodies("/otel/v1/traces");
 
   expect(traces).toContain(
     '"key":"service.namespace","value":{"stringValue":"shop"}',
@@ -304,9 +308,7 @@ test("records resource attributes, which explicit options win over", async () =>
   );
   expect(traces).not.toContain("ignored");
 
-  const replay = await gunzip(
-    sentTo("/otel/v1/logs").find(isReplay)?.init?.body,
-  );
+  const [replay] = await replayBodies();
   expect(replay).toContain(
     '"key":"service.namespace","value":{"stringValue":"shop"}',
   );
@@ -328,7 +330,8 @@ test("setAttributes adds its attributes to later telemetry, and SDK and user key
   await new Promise((resolve) => setTimeout(resolve, 20));
   await module.shutdown();
 
-  const body = jsonBodies("/otel/v1/traces") + jsonBodies("/otel/v1/logs");
+  const body =
+    (await rumBodies("/otel/v1/traces")) + (await rumBodies("/otel/v1/logs"));
 
   expect(body).toContain(
     '"key":"app.team.name","value":{"stringValue":"core"}',
@@ -389,8 +392,8 @@ test("sends a full batch of 16 records at once instead of waiting for the timer"
     expect(sentTo("/otel/v1/traces").length).toBeGreaterThan(0);
     expect(sentTo("/otel/v1/logs").length).toBeGreaterThan(0);
   });
-  expect(recordCount(sentTo("/otel/v1/traces")[0])).toBe(16);
-  expect(recordCount(sentTo("/otel/v1/logs")[0])).toBe(16);
+  expect(recordCount((await bodiesSentTo("/otel/v1/traces"))[0])).toBe(16);
+  expect(recordCount((await bodiesSentTo("/otel/v1/logs"))[0])).toBe(16);
 });
 
 test("captures the console methods of the chosen level", async () => {
@@ -409,9 +412,9 @@ test("captures the console methods of the chosen level", async () => {
   console.info("info-message");
   await module.shutdown();
 
-  expect(jsonBodies("/otel/v1/logs")).toContain("warn-message");
-  expect(jsonBodies("/otel/v1/logs")).not.toContain("info-message");
-  expect(jsonBodies("/otel/v1/logs")).not.toContain('"key":"exception.');
+  expect(await rumBodies("/otel/v1/logs")).toContain("warn-message");
+  expect(await rumBodies("/otel/v1/logs")).not.toContain("info-message");
+  expect(await rumBodies("/otel/v1/logs")).not.toContain('"key":"exception.');
 });
 
 test("records errors passed to the console with their message and stack", async () => {
@@ -428,7 +431,7 @@ test("records errors passed to the console with their message and stack", async 
   console.error(framesOnly);
   await module.shutdown();
 
-  const body = jsonBodies("/otel/v1/logs");
+  const body = await rumBodies("/otel/v1/logs");
   expect(body).toContain(String.raw`failed: Error: boom\n    at `);
   expect(body).toContain(String.raw`{\"id\":1}`);
   expect(body).toContain(String.raw`Error: bad\nhandler@app.js:1:2`);
@@ -448,7 +451,7 @@ test("recordException sends an exception event under the session", async () => {
   recordException(new Error("caught"), { "app.operation": "checkout" });
   await module.shutdown();
 
-  const body = jsonBodies("/otel/v1/logs");
+  const body = await rumBodies("/otel/v1/logs");
 
   expect(body).toContain(
     '"key":"exception.message","value":{"stringValue":"caught"}',
@@ -477,7 +480,7 @@ test("captures no console calls with console false, and matches origins given as
   await fetch("https://example-api.clickhouse.com/users");
   await module.shutdown();
 
-  expect(jsonBodies("/otel/v1/logs")).not.toContain("error-message");
+  expect(await rumBodies("/otel/v1/logs")).not.toContain("error-message");
   const request = requests.find(
     (r) => r.url === "https://example-api.clickhouse.com/users",
   );
@@ -501,9 +504,9 @@ test("records the replay under the same session", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   await module.shutdown();
 
-  const replay = sentTo("/otel/v1/logs").filter(isReplay);
+  const replay = await replayBodies();
   expect(replay.length).toBeGreaterThan(0);
-  const json = await gunzip(replay[0]?.init?.body);
+  const json = replay[0];
   expect(json).toContain('"name":"rum.rr-web"');
   expect(json).toContain(
     '"key":"session.id","value":{"stringValue":"' + sessionId + '"}',
@@ -527,10 +530,7 @@ test("records text and input values when masking is turned off, except rr-mask e
   await module.shutdown();
   document.body.innerHTML = "";
 
-  const replay = sentTo("/otel/v1/logs").filter(isReplay);
-  const json = (
-    await Promise.all(replay.map((r) => gunzip(r.init?.body)))
-  ).join("");
+  const json = (await replayBodies()).join("");
 
   expect(json).toContain("visible-text");
   expect(json).toContain("typed-value");
@@ -545,7 +545,7 @@ test("pauseReplay before init sends no replay", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   await module.shutdown();
 
-  expect(sentTo("/otel/v1/logs").some(isReplay)).toBe(false);
+  expect(await replayBodies()).toEqual([]);
 });
 
 test("starts nothing without an endpoint or a service name", async () => {
@@ -604,7 +604,7 @@ test("startNewSession gives later telemetry a new session id", async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
   await module.shutdown();
 
-  expect(jsonBodies("/otel/v1/traces")).toContain(
+  expect(await rumBodies("/otel/v1/traces")).toContain(
     '"key":"session.id","value":{"stringValue":"' + (second ?? "") + '"}',
   );
 });
