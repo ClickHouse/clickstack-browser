@@ -4,11 +4,18 @@
 
 ### Fixed
 
-- Traces are sent in batches of up to 16 spans and logs in batches of up to 8 records, instead of
-  upstream's 512. A burst of telemetry, such as a page load with many requests, left one batch
-  larger than the roughly 60 KiB a closing page can still send, and the whole batch was lost when
-  the user reloaded, closed the tab or navigated away. Most of such a burst now arrives; very large
-  records can still exceed the limit.
+- Traces and logs lost when the user reloaded, closed the tab or navigated away after a burst of
+  telemetry, such as a page load with many requests. Upstream's exporter sent every request with
+  `keepalive`, and Chromium counts a keepalive request against the page's 64 KiB budget until its
+  response is read, so exports during the burst used up the budget, were rejected and retried with
+  backoff, and the final flush found no room. Traces and logs now use `keepalive` only while the
+  page is hidden, through this package's own exporter built on the upstream OTLP/JSON serializers.
+- Traces and logs are sent in batches of up to 16 records instead of upstream's 512, so a burst no
+  longer leaves one batch larger than the limit pending. Very large records can still exceed it.
+
+### Changed
+
+- Failed trace and log exports are not retried, as for replay. One warning is logged.
 
 ### Docs
 

@@ -31,7 +31,13 @@ import {
   type SessionManager,
 } from "@opentelemetry/browser-sdk/session";
 import { LongTaskInstrumentation } from "@opentelemetry/instrumentation-long-task";
+import {
+  JsonLogsSerializer,
+  JsonTraceSerializer,
+} from "@opentelemetry/otlp-transformer";
 import { detectResources } from "@opentelemetry/resources";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace";
 import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
   ATTR_SERVICE_NAME,
@@ -41,6 +47,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { hasSignalPath, resolveUrl, signalUrl } from "../internal/endpoints.ts";
 import { pageState } from "../internal/global.ts";
+import { OtlpJsonExporter } from "../internal/otlp-exporter.ts";
 import { createReplayProvider } from "../replay/exporter.ts";
 import { Recorder } from "../replay/recorder.ts";
 import {
@@ -151,11 +158,10 @@ export interface ClickStackBrowserOptions {
 }
 
 // Upstream sends up to 512 records per request, and a closing page can still send only about
-// 60 KiB with keepalive, so a large batch pending at unload is lost whole. Small batches go out as
-// soon as they fill up, which leaves less pending. A record count does not bound bytes, so large
-// records can still exceed the limit. Log records run about twice the size of spans.
-const TRACES_BATCH_CONFIG = { maxExportBatchSize: 16 };
-const LOGS_BATCH_CONFIG = { maxExportBatchSize: 8 };
+// 60 KiB with keepalive, so a large batch pending at unload is lost whole. Batches of 16 go out as
+// soon as they fill up, which leaves less pending. A record count does not bound bytes, so very
+// large records can still exceed the limit.
+const MAX_EXPORT_BATCH_SIZE = 16;
 
 // Kept in step with ClickStackBrowserOptions by the type check, for the unknown-option warning
 const OPTION_NAMES = new Set(
@@ -312,9 +318,6 @@ async function start(
     onSessionEnded: () => undefined,
   });
 
-  const headers: Record<string, string> = options.apiKey
-    ? { authorization: options.apiKey }
-    : {};
   const resourceAttributes = {
     ...detectResources({ detectors: [browserDetector] }).attributes,
     ...options.resourceAttributes,
@@ -377,6 +380,8 @@ async function start(
   ];
 
   const documentProvider = createLocationDocumentProvider(sanitize);
+  // No exportConfig: batches go through our exporter instead of upstream's, so keepalive is used
+  // only while the page is hidden
   run.sdk = startBrowserSdk({
     logLevel: "WARN",
     resourceAttributes,
@@ -390,9 +395,15 @@ async function start(
           ? [createUrlSanitizerLogRecordProcessor(sanitizeUrl)]
           : []),
         attributesLogRecordProcessor,
+        new BatchLogRecordProcessor({
+          exporter: new OtlpJsonExporter(
+            logsUrl,
+            options.apiKey,
+            JsonLogsSerializer,
+          ),
+          maxExportBatchSize: MAX_EXPORT_BATCH_SIZE,
+        }),
       ],
-      exportConfig: { url: logsUrl, headers },
-      batchProcessorConfig: LOGS_BATCH_CONFIG,
     },
     traces: {
       processors: [
@@ -400,9 +411,15 @@ async function start(
         createDocumentSpanProcessor(documentProvider),
         userSpanProcessor,
         attributesSpanProcessor,
+        new BatchSpanProcessor({
+          exporter: new OtlpJsonExporter(
+            tracesUrl,
+            options.apiKey,
+            JsonTraceSerializer,
+          ),
+          maxExportBatchSize: MAX_EXPORT_BATCH_SIZE,
+        }),
       ],
-      exportConfig: { url: tracesUrl, headers },
-      batchProcessorConfig: TRACES_BATCH_CONFIG,
     },
     instrumentations,
   });

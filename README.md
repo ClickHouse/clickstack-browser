@@ -264,10 +264,10 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent in small batches (16 spans or 8 log records), and when the page is hidden.
-  Browsers limit what a closing page can still send to 64 KiB in total, so after a burst of
-  activity, such as a page load with many requests, or during a long replay, the last records can
-  be lost when the user leaves.
+- Telemetry is sent in batches of up to 16 records, and when the page is hidden. Browsers limit
+  what a closing page can still send to 64 KiB in total, so after a burst of activity, such as a
+  page load with many requests, or during a long replay, the last records can be lost when the user
+  leaves. Failed requests are not retried.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 

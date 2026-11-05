@@ -25,6 +25,7 @@ export default defineConfig({
       "@opentelemetry/browser-sdk/session",
       "@opentelemetry/core",
       "@opentelemetry/instrumentation-long-task",
+      "@opentelemetry/otlp-transformer",
       "@opentelemetry/resources",
       "@opentelemetry/sdk-logs",
       "@opentelemetry/sdk-trace",
