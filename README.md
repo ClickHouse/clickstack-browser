@@ -68,7 +68,8 @@ init({
 `OTEL_EXPORTER_OTLP_ENDPOINT`, without `/v1/traces`. With ClickStack, it is your service's collector URL.
 
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
-in Next.js, `src/main.ts` in Vite), not in a component effect.
+in Next.js, `src/main.ts` in Vite), not in a component effect. Replays mask all text and form values
+by default. Set `maskAllText: false` to see the text ([Privacy](#privacy)).
 
 | Option               | Default   | Meaning                                                                                                                                                                                                   |
 | -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -263,8 +264,9 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent in batches, and when the page is hidden. Browsers limit what a closing page
-  can still send to 64 KiB in total, so the last part of a long replay can be lost when the user
+- Telemetry is sent in batches of up to 16 records, and when the page is hidden. Browsers limit
+  what a closing page can still send to 64 KiB in total, so after a burst of activity, such as a
+  page load with many requests, or during a long replay, the last records can be lost when the user
   leaves.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.

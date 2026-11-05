@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.1
+
+### Fixed
+
+- Traces and logs are sent in batches of up to 16 records instead of upstream's 512. A burst of
+  telemetry, such as a page load with many requests, could leave one batch larger than the 60 KiB
+  a closing page can still send, and the whole batch was lost when the user reloaded, closed the
+  tab or navigated away.
+
+### Docs
+
+- The README says near the Quick start that replays mask all text and form values by default.
+
 ## 1.1.0
 
 ### Added

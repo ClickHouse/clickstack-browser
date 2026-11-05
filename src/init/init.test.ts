@@ -58,6 +58,26 @@ function jsonBodies(path: string): string {
     .join("\n");
 }
 
+interface OtlpJson {
+  resourceSpans?: { scopeSpans: { spans: unknown[] }[] }[];
+  resourceLogs?: { scopeLogs: { logRecords: unknown[] }[] }[];
+}
+
+// The number of spans or log records in one uncompressed OTLP/JSON request
+function recordCount(request: Request | undefined): number {
+  const json = JSON.parse(
+    new TextDecoder().decode(request?.init?.body as Uint8Array),
+  ) as OtlpJson;
+  const spans = (json.resourceSpans ?? []).flatMap((r) =>
+    r.scopeSpans.flatMap((s) => s.spans),
+  );
+  const records = (json.resourceLogs ?? []).flatMap((r) =>
+    r.scopeLogs.flatMap((s) => s.logRecords),
+  );
+
+  return spans.length + records.length;
+}
+
 async function gunzip(body: unknown): Promise<string> {
   const stream = new Blob([body as Uint8Array<ArrayBuffer>])
     .stream()
@@ -352,6 +372,25 @@ test("an init without an endpoint does not block a later valid one", async () =>
   module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
 
   expect(await started(module)).toMatch(/^[0-9a-f]{32}$/);
+});
+
+test("sends a full batch of 16 records at once instead of waiting for the timer", async () => {
+  const module = await load();
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  await started(module);
+
+  for (let i = 0; i < 17; i++) {
+    await (await fetch("/api/items")).text();
+    recordException(new Error(`caught-${String(i)}`));
+  }
+
+  // Upstream's timer waits 5 seconds; vi.waitFor gives up after 1
+  await vi.waitFor(() => {
+    expect(sentTo("/otel/v1/traces").length).toBeGreaterThan(0);
+    expect(sentTo("/otel/v1/logs").length).toBeGreaterThan(0);
+  });
+  expect(recordCount(sentTo("/otel/v1/traces")[0])).toBe(16);
+  expect(recordCount(sentTo("/otel/v1/logs")[0])).toBe(16);
 });
 
 test("captures the console methods of the chosen level", async () => {
