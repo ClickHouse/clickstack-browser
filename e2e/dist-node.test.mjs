@@ -59,6 +59,7 @@ async function exercise(api, startReplay) {
   api["pauseReplay"]?.();
   api["resumeReplay"]?.();
   api["startNewSession"]?.();
+  api["setAttributes"]?.({ "app.team.name": "core" });
   api["recordException"]?.(new Error("server-side"));
   await api["shutdown"]?.();
 
@@ -96,6 +97,7 @@ test("the IIFE evaluates and runs in a context without a page", async () => {
     "pauseReplay",
     "recordException",
     "resumeReplay",
+    "setAttributes",
     "setUser",
     "shutdown",
     "startNewSession",

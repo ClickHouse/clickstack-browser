@@ -14,7 +14,15 @@ npm install @clickhouse/clickstack-browser
 ```
 
 The package is ESM only. `@opentelemetry/api` and `@opentelemetry/browser-sdk` are peer
-dependencies, which npm installs automatically.
+dependencies, which npm and pnpm install automatically. With Yarn, add them yourself:
+
+```sh
+yarn add @clickhouse/clickstack-browser @opentelemetry/api@~1.9.1 @opentelemetry/browser-sdk@^0.6.0
+```
+
+Keep a single copy of `@opentelemetry/api` at 1.9.x; `npm ls @opentelemetry/api` lists them. A copy
+at another version, including 1.10 from OpenTelemetry JS 3.x, makes registration fail silently, so
+the SDK's telemetry or the spans from your own `trace.getTracer()` calls go missing.
 
 ### Script tag
 
@@ -62,22 +70,26 @@ init({
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
 in Next.js, `src/main.ts` in Vite), not in a component effect.
 
-| Option           | Default   | Meaning                                                                                                                                                                                                   |
-| ---------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`       | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended.                                                           |
-| `serviceName`    | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
-| `serviceVersion` | None      | `service.version`, such as `2.0.0` or a commit SHA, to compare releases.                                                                                                                                  |
-| `environment`    | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
-| `apiKey`         | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
-| `traceOrigins`   | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
-| `replay`         | `true`    | `false` turns session replay off.                                                                                                                                                                         |
-| `maskAllText`    | `true`    | Masks all text in the replay. With `false`, elements with the `rr-mask` class stay masked ([Privacy](#privacy)).                                                                                          |
-| `maskAllInputs`  | `true`    | Masks the values of all inputs, text areas and selects. With `false`, only passwords are masked.                                                                                                          |     |
-| `console`        | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
-| `sanitizeUrl`    | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
+| Option               | Default   | Meaning                                                                                                                                                                                                   |
+| -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`           | Required  | OTLP/HTTP base URL of the collector, or a same-origin path such as `/otel` that your server forwards. `/v1/traces` and `/v1/logs` are appended. Not needed when both signal endpoints are set.            |
+| `tracesEndpoint`     | None      | Full URL for traces, used as is, like `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`. Replaces the traces URL built from `endpoint`.                                                                                |
+| `logsEndpoint`       | None      | Full URL for logs and replay, used as is, like `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`. Replaces the logs URL built from `endpoint`.                                                                           |
+| `serviceName`        | Required  | `service.name` of all telemetry.                                                                                                                                                                          |
+| `serviceVersion`     | None      | `service.version`, such as `2.0.0` or a commit SHA, to compare releases.                                                                                                                                  |
+| `environment`        | None      | `deployment.environment.name`, such as `production` or `staging`.                                                                                                                                         |
+| `resourceAttributes` | None      | Further resource attributes of all telemetry, replay records included, such as `service.namespace`. The options above win over the same keys.                                                             |
+| `apiKey`             | None      | Ingestion key, sent as the `authorization` header. Anyone who loads the page can read it; to keep it private, send to a same-origin path whose server adds the header.                                    |
+| `traceOrigins`       | None      | Backends whose fetch and XHR requests carry trace context ([Trace propagation and CORS](#trace-propagation-and-cors)). A string matches every URL under that origin; a RegExp is matched against the URL. |
+| `replay`             | `true`    | `false` turns session replay off.                                                                                                                                                                         |
+| `maskAllText`        | `true`    | Masks all text in the replay. With `false`, elements with the `rr-mask` class stay masked ([Privacy](#privacy)).                                                                                          |
+| `maskAllInputs`      | `true`    | Masks the values of all inputs, text areas and selects. With `false`, only passwords are masked.                                                                                                          |     |
+| `console`            | `'error'` | Console level recorded as log events: `'error'`, `'warn'`, `'info'` (with `console.log`), `'debug'`, or `false`.                                                                                          |
+| `sanitizeUrl`        | None      | Rewrites URLs before they are recorded, for example to drop tokens from query strings ([Privacy](#privacy)).                                                                                              |
 
-Without an http(s) `endpoint` or a `serviceName`, `init` logs an error and starts nothing. The rest
-is fixed:
+Without a `serviceName` and an http(s) `endpoint` (or both signal endpoints), `init` logs an error
+and starts nothing, and a later valid call still starts. Unknown options are ignored with a warning.
+The rest is fixed:
 
 - Instrumentations: fetch, XHR, errors, failed resource loads, navigation, user action, web vitals,
   navigation timing, resource timing, long task and console.
@@ -93,8 +105,12 @@ Other functions:
 - `setUser(user)` adds `user.id`, `user.email`, `user.name`, `user.full_name` and `user.roles` to
   later spans and log records; `setUser(null)` removes them. Set only what your privacy policy
   allows.
+- `setAttributes(attributes)` adds attributes, such as a tenant or a plan, to later spans and log
+  records, replacing the previous set; `setAttributes(null)` removes them. Attributes the SDK or
+  `setUser` sets win. Prefer namespaced keys, such as `app.team.name`.
 - `startNewSession()` ends the current session and starts one with a new `session.id`. On sign-out,
-  call it with `setUser(null)`, so the next user on the device gets a session of their own.
+  call it with `setUser(null)`, so the next user on the device gets a session of their own. It does
+  nothing before `init` has started.
 - `recordException(error, attributes?)` records an error your code caught ([Errors](#errors)).
 - `shutdown()` sends what is buffered and stops everything for the rest of the page.
 
@@ -231,32 +247,68 @@ const replay = startReplay({
 
 - Resource: `service.name`, `service.version`, `deployment.environment.name`,
   `telemetry.sdk.*`, `telemetry.distro.name` (`clickstack-browser`), `telemetry.distro.version`,
-  `user_agent.original` and `browser.*`.
-- Every span and log record: `session.id`, `browser.document.url.full`, and `user.*` after
-  `setUser`.
+  `user_agent.original`, `browser.*`, and `resourceAttributes`.
+- Every span and log record: `session.id`, `browser.document.url.full`, `user.*` after `setUser`,
+  and the attributes from `setAttributes`.
 - Log events: `browser.navigation`, `browser.user_action.click`, `browser.web_vital`,
   `browser.console`, `exception`, `browser.navigation_timing` and `browser.resource_timing`. Fetch
   and XHR requests and long tasks are spans.
-- Replay: gzip-compressed log records with the scope `rum.rr-web`, sent to `/v1/logs`. A collector
+- Replay: gzip-compressed log records with the scope `rum.rr-web`, sent to the logs URL. A collector
   between the page and ClickStack must keep their attributes unchanged.
 
 ## Lifecycle
 
 - `init` returns at once and starts in the background, so telemetry from the same tick, such as an
   immediate `fetch`, is not captured. Calls to `setUser`, `pauseReplay` and `resumeReplay` before
-  `init` are kept. Only the first `init` on a page counts.
+  `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
+  fetching runtime configuration, still records the page's navigation, navigation timing and
+  resource timing.
 - Telemetry is sent in batches, and when the page is hidden. Browsers limit what a closing page
   can still send to 64 KiB in total, so the last part of a long replay can be lost when the user
   leaves.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 
+## ClickStack versions
+
+- Traces and logs work with every ClickStack version. Session replay needs ClickStack 2.37.0 or
+  later.
+- The Sessions list and replay playback need a ClickStack release that reads `session.id`. Earlier
+  releases store the data but don't list these sessions.
+
 ## Compatibility
 
-- Browsers: Baseline Widely available (ES2022). No `eval`, so a strict
-  Content Security Policy works; `connect-src` must allow the endpoint.
-- OpenTelemetry: `@opentelemetry/api` `>=1.9.1 <1.10.0` and `@opentelemetry/browser-sdk`
-  `^0.6.0`.
+- Browsers: Baseline Widely available (ES2022). No `eval`, so a strict Content Security Policy
+  works; `connect-src` must allow the endpoint.
+- OpenTelemetry: the 1.x line supports OpenTelemetry JS 2.x: `@opentelemetry/api` `>=1.9.1 <1.10.0`
+  and `@opentelemetry/browser-sdk` `^0.6.0`.
+
+## Testing
+
+The package is ESM only, like the OpenTelemetry browser packages it uses. Vitest loads it as is while Jest with CommonJS does not, so map the package to a stub in the Jest config:
+
+```js
+// jest.config.js
+moduleNameMapper: {
+  "^@clickhouse/clickstack-browser$": "<rootDir>/test/clickstack-browser.js",
+},
+```
+
+```js
+// test/clickstack-browser.js
+const noop = () => undefined;
+module.exports = {
+  init: noop,
+  setUser: noop,
+  setAttributes: noop,
+  getSessionId: () => null,
+  startNewSession: noop,
+  recordException: noop,
+  pauseReplay: noop,
+  resumeReplay: noop,
+  shutdown: () => Promise.resolve(),
+};
+```
 
 ## License
 

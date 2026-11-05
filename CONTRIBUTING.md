@@ -18,8 +18,10 @@ collector in Docker. `npm run format` fixes formatting. Add new words for the sp
 
 ## Releasing
 
-1. In a pull request, set the version (`npm version 1.0.0-rc.1 --no-git-tag-version`) and add a
-   `CHANGELOG.md` entry.
+Each pull request that changes what users get adds a line under `## Unreleased` in `CHANGELOG.md`.
+
+1. In a pull request, set the version (`npm version 1.1.0 --no-git-tag-version`) and rename
+   `## Unreleased` to the version.
 2. After it merges, run the Release workflow from the Actions tab and approve the deployment.
 
 The workflow runs every check, publishes to npm with provenance (a version with a `-` suffix goes
