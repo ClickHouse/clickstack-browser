@@ -1,4 +1,9 @@
-import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+import {
+  diag,
+  DiagConsoleLogger,
+  DiagLogLevel,
+  type Attributes,
+} from "@opentelemetry/api";
 import {
   ConsoleInstrumentation,
   type ConsoleMethod,
@@ -34,7 +39,7 @@ import {
   ATTR_TELEMETRY_DISTRO_NAME,
   ATTR_TELEMETRY_DISTRO_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { signalUrl } from "../internal/endpoints.ts";
+import { hasSignalPath, resolveUrl, signalUrl } from "../internal/endpoints.ts";
 import { pageState } from "../internal/global.ts";
 import { createReplayProvider } from "../replay/exporter.ts";
 import { Recorder } from "../replay/recorder.ts";
@@ -48,6 +53,10 @@ import {
   createUrlSanitizerLogRecordProcessor,
   guardSanitizeUrl,
 } from "../rum/sanitize-url.ts";
+import {
+  attributesLogRecordProcessor,
+  attributesSpanProcessor,
+} from "../rum/attributes.ts";
 import { userLogRecordProcessor, userSpanProcessor } from "../rum/user.ts";
 import { VERSION } from "../version.ts";
 
@@ -73,11 +82,22 @@ const CONSOLE_METHODS: Record<ConsoleLevel, ConsoleMethod[]> = {
  */
 export interface ClickStackBrowserOptions {
   /**
-   * OTLP/HTTP base URL of the collector, for example `https://example-collector.clickhouse.com:4318`, or a
-   * same-origin proxy path such as `/otel`. `/v1/traces` and `/v1/logs` are appended to its path,
-   * and a relative value resolves against the page URL. Available in ClickStack / ClickHouse Observability.
+   * OTLP/HTTP base URL of the collector, for example `https://example-collector.clickhouse.com:4318`,
+   * or a same-origin proxy path such as `/otel`. `/v1/traces` and `/v1/logs` are appended to its
+   * path, and a relative value resolves against the page URL. Required unless both
+   * `tracesEndpoint` and `logsEndpoint` are set.
    */
-  endpoint: string;
+  endpoint?: string | undefined;
+  /**
+   * Full URL for traces, used as is, like `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`. Replaces the traces
+   * URL built from `endpoint`. Default: none.
+   */
+  tracesEndpoint?: string | undefined;
+  /**
+   * Full URL for logs and replay, used as is, like `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`. Replaces the
+   * logs URL built from `endpoint`. Default: none.
+   */
+  logsEndpoint?: string | undefined;
   /**
    * Ingestion API key, sent as the `authorization` header. Default: none.
    */
@@ -94,6 +114,12 @@ export interface ClickStackBrowserOptions {
    * `deployment.environment.name`. Default: none.
    */
   environment?: string | undefined;
+  /**
+   * Further resource attributes of all telemetry, replay records included, such as
+   * `service.namespace`. `serviceName`, `serviceVersion` and `environment` win over the same keys
+   * here. Default: none.
+   */
+  resourceAttributes?: Attributes | undefined;
   /**
    * Backend origins, such as `https://example-api.clickhouse.com`, whose fetch and XHR requests carry W3C
    * trace context headers so backend traces join the browser's. Same-origin requests always
@@ -123,6 +149,26 @@ export interface ClickStackBrowserOptions {
    */
   sanitizeUrl?: ((url: string) => string) | undefined;
 }
+
+// Kept in step with ClickStackBrowserOptions by the type check, for the unknown-option warning
+const OPTION_NAMES = new Set(
+  Object.keys({
+    endpoint: true,
+    tracesEndpoint: true,
+    logsEndpoint: true,
+    apiKey: true,
+    serviceName: true,
+    serviceVersion: true,
+    environment: true,
+    resourceAttributes: true,
+    traceOrigins: true,
+    replay: true,
+    maskAllText: true,
+    maskAllInputs: true,
+    console: true,
+    sanitizeUrl: true,
+  } satisfies Record<keyof ClickStackBrowserOptions, true>),
+);
 
 interface Run {
   sessionId: string | null;
@@ -172,10 +218,12 @@ export function init(options: ClickStackBrowserOptions): void {
     return;
   }
 
-  page.initialized = true;
-
-  const tracesUrl = signalUrl(options.endpoint, "traces");
-  const logsUrl = signalUrl(options.endpoint, "logs");
+  const tracesUrl = options.tracesEndpoint
+    ? resolveUrl(options.tracesEndpoint)?.href
+    : signalUrl(options.endpoint, "traces");
+  const logsUrl = options.logsEndpoint
+    ? resolveUrl(options.logsEndpoint)?.href
+    : signalUrl(options.endpoint, "logs");
 
   if (
     tracesUrl === undefined ||
@@ -185,21 +233,51 @@ export function init(options: ClickStackBrowserOptions): void {
     // The SDK (which installs the diagnostics logger) does not start on this path
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
     diag.error(
-      "@clickhouse/clickstack-browser: init needs an http(s) endpoint and a serviceName",
+      "@clickhouse/clickstack-browser: init needs a serviceName and an http(s) endpoint, or both tracesEndpoint and logsEndpoint",
     );
 
     return;
   }
 
-  run.started = start(options, tracesUrl, logsUrl).catch((error: unknown) => {
+  page.initialized = true;
+  run.started = start(
+    options,
+    tracesUrl,
+    logsUrl,
+    optionWarnings(options),
+  ).catch((error: unknown) => {
     diag.error("@clickhouse/clickstack-browser: init failed", error);
   });
+}
+
+// Reported once the SDK has installed the diagnostics logger
+function optionWarnings(options: ClickStackBrowserOptions): string[] {
+  const warnings: string[] = [];
+  const unknown = Object.keys(options).filter(
+    (name) => !OPTION_NAMES.has(name),
+  );
+
+  if (unknown.length > 0) {
+    warnings.push(`unknown init options are ignored: ${unknown.join(", ")}`);
+  }
+
+  if (
+    (!options.tracesEndpoint || !options.logsEndpoint) &&
+    hasSignalPath(options.endpoint)
+  ) {
+    warnings.push(
+      "endpoint is the collector base URL; its trailing /v1/traces or /v1/logs is dropped",
+    );
+  }
+
+  return warnings;
 }
 
 async function start(
   options: ClickStackBrowserOptions,
   tracesUrl: string,
   logsUrl: string,
+  warnings: string[],
 ): Promise<void> {
   const sessionManager = createSessionManager({
     sessionIdGenerator: createDefaultSessionIdGenerator(),
@@ -232,6 +310,7 @@ async function start(
     : {};
   const resourceAttributes = {
     ...detectResources({ detectors: [browserDetector] }).attributes,
+    ...options.resourceAttributes,
     [ATTR_TELEMETRY_DISTRO_NAME]: "clickstack-browser",
     [ATTR_TELEMETRY_DISTRO_VERSION]: VERSION,
     [ATTR_SERVICE_NAME]: options.serviceName,
@@ -303,6 +382,7 @@ async function start(
         ...(sanitizeUrl
           ? [createUrlSanitizerLogRecordProcessor(sanitizeUrl)]
           : []),
+        attributesLogRecordProcessor,
       ],
       exportConfig: { url: logsUrl, headers },
     },
@@ -311,12 +391,16 @@ async function start(
         createSessionSpanProcessor(sessionManager),
         createDocumentSpanProcessor(documentProvider),
         userSpanProcessor,
+        attributesSpanProcessor,
       ],
       exportConfig: { url: tracesUrl, headers },
     },
     instrumentations,
   });
   run.stopResourceErrors = listenForResourceErrors(sanitizeUrl);
+  for (const warning of warnings) {
+    diag.warn(`@clickhouse/clickstack-browser: ${warning}`);
+  }
 
   if (options.replay !== false && pageState().recording !== true) {
     run.recorder = new Recorder({

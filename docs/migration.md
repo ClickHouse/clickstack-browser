@@ -55,51 +55,53 @@ With the script tag, load the file as the [README](../README.md#script-tag) show
 
 ## Options
 
-| `@hyperdx/browser`                                                                                                    | Now                            | Notes                                                                                                                             |
-| --------------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `apiKey`                                                                                                              | `apiKey` (optional)            | Same bare `authorization` header. Leave it out when a proxy adds the key.                                                         |
-| `service`                                                                                                             | `serviceName`                  | Required.                                                                                                                         |
-| `url` (default `https://in-otel.hyperdx.io`)                                                                          | `endpoint`                     | Required, with no default. `/v1/traces` and `/v1/logs` are appended; a relative value such as `/otel` resolves against the page.  |
-| `tracePropagationTargets`                                                                                             | `traceOrigins`                 | A RegExp works as before (matched against the full URL). A string is now an origin or URL prefix that matches every URL under it. |
-| `consoleCapture`, `captureConsole`                                                                                    | `console`                      | Default `'error'`. `'debug'` records every method, as `true` did; `false` now turns `console.error` off too.                      |
-| `disableReplay: true`                                                                                                 | `replay: false`                |                                                                                                                                   |
-| `maskAllInputs`, `maskAllText`                                                                                        | `maskAllInputs`, `maskAllText` | Both default to `true`; `@hyperdx/browser` recorded text in clear by default. Hidden inputs are masked too.                       |
-| `maskClass`, `blockClass`, `blockSelector`, `ignoreClass`, `recordCanvas`, `sampling`, `replay` (rrweb options)       | Removed                        | rrweb's default classes (`rr-block`, `rr-ignore`, `rr-mask`) still apply. Canvas is not recorded.                                 |
-| `otelResourceAttributes['deployment.environment']`                                                                    | `environment`                  | Recorded as `deployment.environment.name`, the stable semantic convention name.                                                   |
-| `otelResourceAttributes['service.version']`                                                                           | `serviceVersion`               | Recorded as `service.version`.                                                                                                    |
-| `tracesUrl`, `logsUrl`, `otelResourceAttributes`, `instrumentations`, `ignoreUrls`, `debug`, `advancedNetworkCapture` | Removed                        | See [Not offered](#not-offered).                                                                                                  |
-| `disableIntercom`                                                                                                     | Removed                        | The Intercom integration is gone.                                                                                                 |
+| `@hyperdx/browser`                                                                                              | Now                              | Notes                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `apiKey`                                                                                                        | `apiKey` (optional)              | Same bare `authorization` header. Leave it out when a proxy adds the key.                                                         |
+| `service`                                                                                                       | `serviceName`                    | Required.                                                                                                                         |
+| `url` (default `https://in-otel.hyperdx.io`)                                                                    | `endpoint`                       | Required, with no default. `/v1/traces` and `/v1/logs` are appended; a relative value such as `/otel` resolves against the page.  |
+| `tracePropagationTargets`                                                                                       | `traceOrigins`                   | A RegExp works as before (matched against the full URL). A string is now an origin or URL prefix that matches every URL under it. |
+| `consoleCapture`, `captureConsole`                                                                              | `console`                        | Default `'error'`. `'debug'` records every method, as `true` did; `false` now turns `console.error` off too.                      |
+| `disableReplay: true`                                                                                           | `replay: false`                  |                                                                                                                                   |
+| `maskAllInputs`, `maskAllText`                                                                                  | `maskAllInputs`, `maskAllText`   | Both default to `true`; `@hyperdx/browser` recorded text in clear by default. Hidden inputs are masked too.                       |
+| `maskClass`, `blockClass`, `blockSelector`, `ignoreClass`, `recordCanvas`, `sampling`, `replay` (rrweb options) | Removed                          | rrweb's default classes (`rr-block`, `rr-ignore`, `rr-mask`) still apply. Canvas is not recorded.                                 |
+| `otelResourceAttributes['deployment.environment']`                                                              | `environment`                    | Recorded as `deployment.environment.name`, the stable semantic convention name.                                                   |
+| `otelResourceAttributes['service.version']`                                                                     | `serviceVersion`                 | Recorded as `service.version`.                                                                                                    |
+| `otelResourceAttributes` (other keys)                                                                           | `resourceAttributes`             | The same resource attributes, replay records included.                                                                            |
+| `tracesUrl`, `logsUrl`                                                                                          | `tracesEndpoint`, `logsEndpoint` | Full URLs, used as is. With both set, `endpoint` is not needed.                                                                   |
+| `instrumentations`, `ignoreUrls`, `debug`, `advancedNetworkCapture`                                             | Removed                          | See [Not offered](#not-offered).                                                                                                  |
+| `disableIntercom`                                                                                               | Removed                          | The Intercom integration is gone.                                                                                                 |
 
 ## Methods
 
-| `@hyperdx/browser`                                                  | Now                                  | Notes                                                                                                                                                     |
-| ------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HyperDX.init(options)`                                             | `init(options)`                      | Named imports instead of a default export.                                                                                                                |
-| `setGlobalAttributes(attributes)`                                   | `setUser(user)`                      | `setUser(null)` removes the user. See [User attributes](#user-attributes).                                                                                |
-| `addAction(name, attributes)`                                       | Removed                              | Create the span with the OpenTelemetry API: `trace.getTracer('app').startSpan(name, { attributes }).end()` (`ClickStack.otel.trace` with the script tag). |
-| `recordException(error, attributes)`                                | `recordException(error, attributes)` | Records an `exception` log event instead of a span. See [Exceptions](#exceptions).                                                                        |
-| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                              | Not needed: React reports errors caught by boundaries with `console.error`, which is recorded with the error. See [Exceptions](#exceptions).              |
-| `getSessionId()`                                                    | `getSessionId()`                     | Returns `string \| null`: `null` until the session is restored or created, shortly after `init`.                                                          |
-| `stopSessionRecorder()`, `resumeSessionRecorder()`                  | `pauseReplay()`, `resumeReplay()`    | Resuming starts with a full snapshot.                                                                                                                     |
-| `enableAdvancedNetworkCapture()`, `disableAdvancedNetworkCapture()` | Removed                              | See [Not offered](#not-offered).                                                                                                                          |
-| `getSessionUrl()`                                                   | Removed                              | Build the link to your ClickStack instance yourself.                                                                                                      |
+| `@hyperdx/browser`                                                  | Now                                          | Notes                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HyperDX.init(options)`                                             | `init(options)`                              | Named imports instead of a default export.                                                                                                                                                                                                                  |
+| `setGlobalAttributes(attributes)`                                   | `setUser(user)`, `setAttributes(attributes)` | User keys go to `setUser`, the rest to `setAttributes`. See [User attributes](#user-attributes).                                                                                                                                                            |
+| `addAction(name, attributes)`                                       | Removed                                      | Create the span with the OpenTelemetry API: `trace.getTracer('app').startSpan(name, { attributes }).end()` (`ClickStack.otel.trace` with the script tag), with `@opentelemetry/api@~1.9.1` as a direct dependency. After an `await` the span has no parent. |
+| `recordException(error, attributes)`                                | `recordException(error, attributes)`         | Records an `exception` log event instead of a span. See [Exceptions](#exceptions).                                                                                                                                                                          |
+| `attachToReactErrorBoundary(ErrorBoundary)`                         | Removed                                      | Not needed: React reports errors caught by boundaries with `console.error`, which is recorded with the error. See [Exceptions](#exceptions).                                                                                                                |
+| `getSessionId()`                                                    | `getSessionId()`                             | Returns `string \| null`: `null` until the session is restored or created, shortly after `init`.                                                                                                                                                            |
+| `stopSessionRecorder()`, `resumeSessionRecorder()`                  | `pauseReplay()`, `resumeReplay()`            | Resuming starts with a full snapshot.                                                                                                                                                                                                                       |
+| `enableAdvancedNetworkCapture()`, `disableAdvancedNetworkCapture()` | Removed                                      | No `init` replacement: it recorded every header and body. See [Not offered](#not-offered).                                                                                                                                                                  |
+| `getSessionUrl()`                                                   | Removed                                      | Build the link to your ClickStack instance yourself.                                                                                                                                                                                                        |
 
 ## Not offered
 
 `init` has no further options. These need the upstream SDK, set up as in
 [Using the upstream SDK directly](../README.md#using-the-upstream-sdk-directly), with `startReplay`
-for the replay:
+for the replay. That path gives up what `init` adds on top of upstream: `setUser`, `setAttributes`,
+failed resource loads, and the console and error handling.
 
-| Need                                                    | Upstream alternative                                                                                         |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Separate traces and logs URLs, or extra request headers | `exportConfig.url` and `exportConfig.headers` per signal in `startBrowserSdk`                                |
-| Other resource attributes                               | `resourceAttributes` in `startBrowserSdk`, and the same in `startReplay`                                     |
-| Instrumentation settings, or other instrumentations     | Construct the instrumentations yourself and pass them to `instrumentations` in `startBrowserSdk`             |
-| Ignored URLs                                            | `ignoreUrls` of the fetch, XHR and resource timing instrumentations                                          |
-| Request and response headers                            | `applyCustomAttributesOnSpan` of the fetch and XHR instrumentations; record an allowlist, never every header |
-| Sampling                                                | `traces.sampler` in `startBrowserSdk`; call `startReplay` only in the sessions you want to record            |
-| Other session lifetimes                                 | `maxDuration` and `inactivityTimeout` of `createSessionManager` (`init` uses 4 hours and 15 minutes)         |
-| Debug diagnostics                                       | `logLevel` in `startBrowserSdk` (`init` uses `'WARN'`)                                                       |
+| Need                                                | Upstream alternative                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Extra request headers                               | `exportConfig.headers` per signal in `startBrowserSdk`                                                       |
+| Instrumentation settings, or other instrumentations | Construct the instrumentations yourself and pass them to `instrumentations` in `startBrowserSdk`             |
+| Ignored URLs                                        | `ignoreUrls` of the fetch, XHR and resource timing instrumentations                                          |
+| Request and response headers                        | `applyCustomAttributesOnSpan` of the fetch and XHR instrumentations; record an allowlist, never every header |
+| Sampling                                            | `traces.sampler` in `startBrowserSdk`; call `startReplay` only in the sessions you want to record            |
+| Other session lifetimes                             | `maxDuration` and `inactivityTimeout` of `createSessionManager` (`init` uses 4 hours and 15 minutes)         |
+| Debug diagnostics                                   | `logLevel` in `startBrowserSdk` (`init` uses `'WARN'`)                                                       |
 
 ## Behavior changes
 
@@ -137,8 +139,9 @@ error twice. Call it where caught errors never reach the console: your own `try`
 
 ### User attributes
 
-`setGlobalAttributes` merged any keys into every later span. `setUser` sets the standard `user.*`
-keys on every later span and log record, and replaces the previous user instead of merging:
+`setGlobalAttributes` merged any keys into every later span. Now `setUser` sets the standard
+`user.*` keys and `setAttributes` the rest, on every later span and log record. Both replace the
+previous set instead of merging:
 
 | `setGlobalAttributes` key | `setUser` field | Attribute        |
 | ------------------------- | --------------- | ---------------- |
@@ -148,8 +151,8 @@ keys on every later span and log record, and replaces the previous user instead 
 | None                      | `fullName`      | `user.full_name` |
 | None                      | `roles`         | `user.roles`     |
 
-Keys such as `teamId` have no `setUser` field; they need the upstream SDK with your own span and
-log record processors.
+Keys such as `teamId` go to `setAttributes`, with their names unchanged. Prefer namespaced keys,
+such as `app.team.id`.
 
 ### Telemetry shape
 

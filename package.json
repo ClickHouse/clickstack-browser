@@ -1,13 +1,11 @@
 {
   "name": "@clickhouse/clickstack-browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": false,
-  "description": "OpenTelemetry browser RUM and session replay for ClickStack",
+  "description": "OpenTelemetry browser RUM and session replay for ClickStack and ClickHouse Observability",
   "keywords": [
     "clickhouse",
     "clickstack",
-    "click",
-    "stack",
     "opentelemetry",
     "otel",
     "rum",
@@ -119,7 +117,7 @@
     {
       "name": "npm: .",
       "path": "dist/index.js",
-      "import": "{ init, setUser, getSessionId, startNewSession, recordException, pauseReplay, resumeReplay, shutdown }",
+      "import": "{ init, setUser, setAttributes, getSessionId, startNewSession, recordException, pauseReplay, resumeReplay, shutdown }",
       "ignore": [
         "@opentelemetry"
       ],

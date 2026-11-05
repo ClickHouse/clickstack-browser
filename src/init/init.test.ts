@@ -2,6 +2,7 @@ import { context, diag, propagation, trace } from "@opentelemetry/api";
 import { SessionManager } from "@opentelemetry/browser-sdk/session";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { logs } from "../logs-api.ts";
+import { setAttributes } from "../rum/attributes.ts";
 import { recordException } from "../rum/exceptions.ts";
 import { setUser } from "../rum/user.ts";
 
@@ -90,6 +91,7 @@ afterEach(async () => {
 
   api = undefined;
   setUser(null);
+  setAttributes(null);
 
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -201,6 +203,155 @@ test("records the environment, and passes every URL through sanitizeUrl", async 
     '"key":"deployment.environment.name","value":{"stringValue":"staging"}',
   );
   expect(replay).toContain(String.raw`\"href\":\"https://sanitized.example/`);
+});
+
+test("sends traces and logs to their own endpoints, replay included", async () => {
+  const module = await load();
+  module.init({
+    tracesEndpoint:
+      "https://traces.example-collector.clickhouse.com/custom/traces",
+    logsEndpoint: "/collector/logs",
+    serviceName: "web-app",
+  });
+  await started(module);
+
+  await (await fetch("/api/items")).text();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await module.shutdown();
+
+  const logsUrl = `${location.origin}/collector/logs`;
+
+  expect(
+    requests.some(
+      (r) =>
+        r.url ===
+        "https://traces.example-collector.clickhouse.com/custom/traces",
+    ),
+  ).toBe(true);
+  expect(requests.some((r) => r.url === logsUrl && isReplay(r))).toBe(true);
+  expect(requests.some((r) => r.url === logsUrl && !isReplay(r))).toBe(true);
+});
+
+test("a signal endpoint replaces only its own URL", async () => {
+  const module = await load();
+  module.init({
+    endpoint: "/otel",
+    tracesEndpoint: "https://traces.example-collector.clickhouse.com/v1/traces",
+    serviceName: "web-app",
+    replay: false,
+  });
+  await started(module);
+
+  await (await fetch("/api/items")).text();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await module.shutdown();
+
+  expect(
+    requests.some(
+      (r) =>
+        r.url === "https://traces.example-collector.clickhouse.com/v1/traces",
+    ),
+  ).toBe(true);
+  expect(sentTo("/otel/v1/logs").length).toBeGreaterThan(0);
+  expect(sentTo("/otel/v1/traces")).toEqual([]);
+});
+
+test("records resource attributes, which explicit options win over", async () => {
+  const module = await load();
+  module.init({
+    endpoint: "/otel",
+    serviceName: "web-app",
+    serviceVersion: "2.0.0",
+    resourceAttributes: {
+      "service.namespace": "shop",
+      "service.name": "ignored",
+      "service.version": "ignored",
+    },
+  });
+  await started(module);
+
+  await (await fetch("/api/items")).text();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await module.shutdown();
+
+  const traces = jsonBodies("/otel/v1/traces");
+
+  expect(traces).toContain(
+    '"key":"service.namespace","value":{"stringValue":"shop"}',
+  );
+  expect(traces).toContain(
+    '"key":"service.name","value":{"stringValue":"web-app"}',
+  );
+  expect(traces).not.toContain("ignored");
+
+  const replay = await gunzip(
+    sentTo("/otel/v1/logs").find(isReplay)?.init?.body,
+  );
+  expect(replay).toContain(
+    '"key":"service.namespace","value":{"stringValue":"shop"}',
+  );
+});
+
+test("setAttributes adds its attributes to later telemetry, and SDK and user keys win", async () => {
+  setAttributes({
+    "app.team.name": "core",
+    "user.id": "custom",
+    "session.id": "custom",
+  });
+  setUser({ id: "user-1" });
+  const module = await load();
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+  const sessionId = await started(module);
+
+  await (await fetch("/api/items")).text();
+  recordException(new Error("caught"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await module.shutdown();
+
+  const body = jsonBodies("/otel/v1/traces") + jsonBodies("/otel/v1/logs");
+
+  expect(body).toContain(
+    '"key":"app.team.name","value":{"stringValue":"core"}',
+  );
+  expect(body).toContain('"key":"user.id","value":{"stringValue":"user-1"}');
+  expect(body).toContain(
+    '"key":"session.id","value":{"stringValue":"' + sessionId + '"}',
+  );
+  expect(body).not.toContain('"stringValue":"custom"');
+});
+
+test("warns about unknown options and drops a signal path from the endpoint", async () => {
+  const warn = vi.spyOn(diag, "warn");
+  const options = {
+    endpoint: "/otel/v1/traces",
+    serviceName: "web-app",
+    replay: false,
+    disableReplay: true,
+  };
+  const module = await load();
+  module.init(options);
+  await started(module);
+
+  await (await fetch("/api/items")).text();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await module.shutdown();
+
+  expect(sentTo("/otel/v1/traces").length).toBeGreaterThan(0);
+  expect(requests.some((r) => r.url.includes("/v1/traces/v1/"))).toBe(false);
+
+  const messages = warn.mock.calls.map((call) => call[0]);
+
+  expect(messages.some((m) => m.includes("disableReplay"))).toBe(true);
+  expect(messages.some((m) => m.includes("/v1/traces"))).toBe(true);
+});
+
+test("an init without an endpoint does not block a later valid one", async () => {
+  vi.spyOn(diag, "error").mockImplementation(() => undefined);
+  const module = await load();
+  module.init({ serviceName: "web-app" });
+  module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
+
+  expect(await started(module)).toMatch(/^[0-9a-f]{32}$/);
 });
 
 test("captures the console methods of the chosen level", async () => {
