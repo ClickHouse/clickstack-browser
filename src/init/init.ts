@@ -150,10 +150,12 @@ export interface ClickStackBrowserOptions {
   sanitizeUrl?: ((url: string) => string) | undefined;
 }
 
-// Upstream sends up to 512 records per request. A closing page can still send only 60 KiB with
-// keepalive, so a larger batch pending at unload is lost whole. Batches this small go out as soon
-// as they fill up, leaving little pending, and what is left is split into requests that fit.
-const BATCH_PROCESSOR_CONFIG = { maxExportBatchSize: 16 };
+// Upstream sends up to 512 records per request, and a closing page can still send only about
+// 60 KiB with keepalive, so a large batch pending at unload is lost whole. Small batches go out as
+// soon as they fill up, which leaves less pending. A record count does not bound bytes, so large
+// records can still exceed the limit. Log records run about twice the size of spans.
+const TRACES_BATCH_CONFIG = { maxExportBatchSize: 16 };
+const LOGS_BATCH_CONFIG = { maxExportBatchSize: 8 };
 
 // Kept in step with ClickStackBrowserOptions by the type check, for the unknown-option warning
 const OPTION_NAMES = new Set(
@@ -390,7 +392,7 @@ async function start(
         attributesLogRecordProcessor,
       ],
       exportConfig: { url: logsUrl, headers },
-      batchProcessorConfig: BATCH_PROCESSOR_CONFIG,
+      batchProcessorConfig: LOGS_BATCH_CONFIG,
     },
     traces: {
       processors: [
@@ -400,7 +402,7 @@ async function start(
         attributesSpanProcessor,
       ],
       exportConfig: { url: tracesUrl, headers },
-      batchProcessorConfig: BATCH_PROCESSOR_CONFIG,
+      batchProcessorConfig: TRACES_BATCH_CONFIG,
     },
     instrumentations,
   });

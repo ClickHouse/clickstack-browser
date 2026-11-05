@@ -374,7 +374,7 @@ test("an init without an endpoint does not block a later valid one", async () =>
   expect(await started(module)).toMatch(/^[0-9a-f]{32}$/);
 });
 
-test("sends a full batch of 16 records at once instead of waiting for the timer", async () => {
+test("sends full batches of 16 spans and 8 log records at once instead of waiting for the timer", async () => {
   const module = await load();
   module.init({ endpoint: "/otel", serviceName: "web-app", replay: false });
   await started(module);
@@ -390,7 +390,7 @@ test("sends a full batch of 16 records at once instead of waiting for the timer"
     expect(sentTo("/otel/v1/logs").length).toBeGreaterThan(0);
   });
   expect(recordCount(sentTo("/otel/v1/traces")[0])).toBe(16);
-  expect(recordCount(sentTo("/otel/v1/logs")[0])).toBe(16);
+  expect(recordCount(sentTo("/otel/v1/logs")[0])).toBe(8);
 });
 
 test("captures the console methods of the chosen level", async () => {

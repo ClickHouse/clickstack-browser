@@ -4,10 +4,11 @@
 
 ### Fixed
 
-- Traces and logs are sent in batches of up to 16 records instead of upstream's 512. A burst of
-  telemetry, such as a page load with many requests, could leave one batch larger than the 60 KiB
-  a closing page can still send, and the whole batch was lost when the user reloaded, closed the
-  tab or navigated away.
+- Traces are sent in batches of up to 16 spans and logs in batches of up to 8 records, instead of
+  upstream's 512. A burst of telemetry, such as a page load with many requests, left one batch
+  larger than the roughly 60 KiB a closing page can still send, and the whole batch was lost when
+  the user reloaded, closed the tab or navigated away. Most of such a burst now arrives; very large
+  records can still exceed the limit.
 
 ### Docs
 
