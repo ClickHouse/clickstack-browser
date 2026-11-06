@@ -181,6 +181,8 @@ receivers:
           allowed_origins: ["https://example-app.clickhouse.com"]
           # A list instead must include authorization, content-type and content-encoding
           allowed_headers: ["*"]
+          # Without it, Chrome repeats the preflight every 5 s; 2 hours is its maximum
+          max_age: 7200
 ```
 
 ## Using the upstream SDK directly
@@ -265,8 +267,8 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent as gzip-compressed OTLP/JSON every 5 seconds, when a batch reaches 64 records,
-  and when the page is hidden. A proxy in front of the collector must forward the body and its `Content-Encoding`
+- Telemetry is sent as gzip-compressed OTLP/JSON every 5 seconds and when the page is hidden.
+  Traces and logs also go as soon as 64 records are waiting. A proxy in front of the collector must forward the body and its `Content-Encoding`
   header unchanged. Browsers limit what a closing page can still send to 64 KiB in total, so after
   a burst of activity, such as a page load with many requests, or during a long replay, the last
   records can be lost when the user leaves. Failed requests are not retried, and requests give up
