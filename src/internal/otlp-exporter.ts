@@ -2,8 +2,6 @@ import { diag } from "@opentelemetry/api";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import { gzip, post } from "./transport.ts";
 
-// A final flush larger than this is split, so the parts that fit the shared keepalive budget arrive
-// even when the whole would not
 const KEEPALIVE_PART_BYTES = 16 * 1024;
 
 /**
@@ -87,8 +85,7 @@ export class OtlpJsonExporter<T> {
       return;
     }
 
-    // Only a hidden page needs keepalive, the one time the budget limits what arrives. Read after
-    // compressing, so a page hidden while the body was compressed still gets keepalive and the split.
+    // Read after compressing, so a page hidden meanwhile still gets keepalive and the split
     const hidden = document.visibilityState === "hidden";
     const bodies = hidden ? await this.#split(items, body) : [body];
 

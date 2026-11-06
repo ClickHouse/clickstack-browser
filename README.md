@@ -185,6 +185,9 @@ receivers:
           max_age: 7200
 ```
 
+A proxy in front of the collector must forward the request body and its `Content-Encoding` header
+unchanged.
+
 ## Using the upstream SDK directly
 
 ```ts
@@ -268,12 +271,8 @@ const replay = startReplay({
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
 - Telemetry is sent as gzip-compressed OTLP/JSON every 5 seconds and when the page is hidden.
-  Traces and logs also go as soon as 64 records are waiting. A proxy in front of the collector must
-  forward the body and its `Content-Encoding` header unchanged. Browsers limit what a closing page
-  can still send to 64 KiB in total, so after a burst of activity, such as a page load with many
-  requests, or during a long replay, the last records can be lost when the user leaves. A replay
-  whose full snapshot is over 32 KiB compressed can be lost when the user leaves within 5 seconds.
-  Failed requests are not retried, and requests give up after 10 seconds.
+  Failed requests are not retried. A closing page can send only about 64 KiB, so after a burst of
+  activity or a long replay, the last records can be lost when the user leaves.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 
