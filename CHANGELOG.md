@@ -19,6 +19,8 @@
   when the page is hidden, unless its full snapshot is over 32 KiB compressed: such a snapshot is
   then lost, where 1.1.0 kept it after about 1.5 seconds.
 - Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
+- With a collector that never answers, `shutdown()` takes about 10 seconds per pending log batch,
+  instead of about 9 seconds in total.
 
 ### Fixed
 
@@ -32,9 +34,12 @@
   is hidden, traces, logs and replay together, must fit in about 60 KiB compressed. While the page
   is hidden, a trace or log batch over 16 KiB compressed is split into parts of at most 16 KiB, and
   replay into parts of up to 32 KiB; a single record larger than a part is sent as one. The parts
-  beyond the budget are sent without keepalive and are lost if the page closes. An export already
-  in flight without keepalive when the tab closes is lost too, and the final flush of logs and
-  replay waits for it, so a close during steady traffic can lose the last few seconds of logs.
+  beyond the budget are sent without keepalive and are lost if the page closes. The final flush
+  sends at most one batch of 64 log records, because upstream's log processor sends one batch at a
+  time and waits for each response; spans send all their batches at once. An export already in
+  flight without keepalive when the page is left is lost too, about 5 seconds of traces, logs or
+  replay, and the final flush of logs and replay waits for it. That happens on a close during
+  steady traffic, and on a navigation or reload right after a burst that filled a log batch.
 - Replay requests give up after 10 seconds, as trace and log requests already did. A collector
   that accepted the connection and never answered held replay requests open, which stopped replay
   export and, with a same-origin endpoint, stalled the page's own requests to its server.
