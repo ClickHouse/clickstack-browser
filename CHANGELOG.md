@@ -13,8 +13,8 @@
 - Logs and replay are sent every 5 seconds, as spans already were, instead of every second, so an
   active page sends fewer requests. In exchange, logs arrive up to 5 seconds later, a request lost
   when the tab closes can carry up to 5 seconds of logs, and logs resume up to about 12 seconds
-  after a collector outage. On visits shorter than about 5 seconds, the replay's first snapshot is
-  sent only when the page is left, where it must fit in replay's 32 KiB share.
+  after a collector outage. Replay's full snapshots, without which a replay cannot play, are still
+  sent at once, so short visits keep their replay.
 - Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
 
 ### Fixed
@@ -27,9 +27,10 @@
   `keepalive` only while the page is hidden, so exports during the burst leave the budget to the
   final flush. All exporters share one budget, replay included. Everything pending when the page
   is hidden, traces, logs and replay together, must fit in about 60 KiB compressed. Past that, a
-  batch is sent without keepalive and is lost if the page closes. An export already in flight
-  without keepalive when the tab closes is lost too, and the final flush of logs and replay waits
-  for it, so a close during steady traffic can still lose the last few seconds of logs.
+  batch is split into parts of at most 16 KiB, and the parts beyond the budget are sent without
+  keepalive and are lost if the page closes. An export already in flight without keepalive when
+  the tab closes is lost too, and the final flush of logs and replay waits for it, so a close
+  during steady traffic can still lose the last few seconds of logs.
 - Replay requests give up after 10 seconds, as trace and log requests already did. A collector
   that accepted the connection and never answered held replay requests open, which stopped replay
   export and, with a same-origin endpoint, stalled the page's own requests to its server.

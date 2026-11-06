@@ -2,6 +2,10 @@ import { diag } from "@opentelemetry/api";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import { gzip, post } from "./transport.ts";
 
+// A final flush larger than this is split, so the parts that fit the shared keepalive budget arrive
+// even when the whole would not
+const KEEPALIVE_PART_BYTES = 16 * 1024;
+
 /**
  * Sends gzip-compressed OTLP/JSON request bodies built by an upstream serializer, such as
  * `JsonTraceSerializer`, with `fetch`.
@@ -11,7 +15,8 @@ import { gzip, post } from "./transport.ts";
  * reads the response, which Chromium counts against the page's 64 KiB budget until then. With small
  * batches, exports during a burst use up the budget and the final flush when the user leaves finds
  * no room. This exporter asks for `keepalive` only while the page is hidden, the one time a request
- * has to outlive the page. Failed exports are not retried.
+ * has to outlive the page, and then splits a batch over 16 KiB compressed, so the parts that fit
+ * the budget arrive even when the whole would not. Failed exports are not retried.
  *
  * @internal
  */
@@ -46,19 +51,22 @@ export class OtlpJsonExporter<T> {
   }
 
   /**
-   * Sends the items in one request.
+   * Sends the items in one request, or in parts while the page is hidden.
    *
    * @param items - The batch from the batch processor.
-   * @param resultCallback - Called with success once the request finished. Failures are logged
+   * @param resultCallback - Called with success once every request finished. Failures are logged
    * here once.
    */
   export(items: T[], resultCallback: (result: ExportResult) => void): void {
-    const body = this.#serializer.serializeRequest(items);
-    const sending = (body ? this.#post(body) : Promise.resolve()).then(() => {
-      this.#pending.delete(sending);
+    const sending = this.#send(items)
+      .catch((error: unknown) => {
+        this.#warn(error);
+      })
+      .then(() => {
+        this.#pending.delete(sending);
 
-      resultCallback({ code: ExportResultCode.SUCCESS });
-    });
+        resultCallback({ code: ExportResultCode.SUCCESS });
+      });
 
     this.#pending.add(sending);
   }
@@ -73,16 +81,42 @@ export class OtlpJsonExporter<T> {
     return this.forceFlush();
   }
 
-  async #post(json: Uint8Array): Promise<void> {
+  async #send(items: T[]): Promise<void> {
+    // Only a hidden page needs keepalive, the one time the budget limits what arrives
+    const hidden = document.visibilityState === "hidden";
+    const bodies = await this.#bodies(items, hidden);
+
+    await Promise.all(bodies.map((body) => this.#post(body, hidden)));
+  }
+
+  // The request bodies for the items, halving the items until each body fits KEEPALIVE_PART_BYTES
+  // when split is set. A single item that is still larger stays one body.
+  async #bodies(
+    items: T[],
+    split: boolean,
+  ): Promise<Uint8Array<ArrayBuffer>[]> {
+    const json = this.#serializer.serializeRequest(items);
+    if (json === undefined) {
+      return [];
+    }
+
+    // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
+    const body = await gzip(json as Uint8Array<ArrayBuffer>);
+    if (!split || body.byteLength <= KEEPALIVE_PART_BYTES || items.length < 2) {
+      return [body];
+    }
+
+    const half = Math.ceil(items.length / 2);
+
+    return [
+      ...(await this.#bodies(items.slice(0, half), true)),
+      ...(await this.#bodies(items.slice(half), true)),
+    ];
+  }
+
+  async #post(body: Uint8Array<ArrayBuffer>, hidden: boolean): Promise<void> {
     try {
-      // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
-      const body = await gzip(json as Uint8Array<ArrayBuffer>);
-      const response = await post(
-        this.#url,
-        this.#headers,
-        body,
-        document.visibilityState === "hidden",
-      );
+      const response = await post(this.#url, this.#headers, body, hidden);
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }

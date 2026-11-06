@@ -63,6 +63,12 @@ async function gunzip(body: BodyInit | null | undefined): Promise<string> {
   return new Response(stream).text();
 }
 
+// Base64 of random bytes barely compresses: 8 KiB of it is about 6 KiB after gzip
+function randomText(length: number): string {
+  const bytes = crypto.getRandomValues(new Uint8Array((length * 3) / 4));
+  return btoa(String.fromCharCode(...bytes));
+}
+
 // Responses wait until respond() is called, so requests stay in flight and share the limits
 function holdResponses(): () => void {
   let respond = (): void => undefined;
@@ -101,6 +107,45 @@ test("asks for keepalive while the page is hidden", async () => {
   await exportItems(new OtlpJsonExporter(URL_, undefined, serializer), ["a"]);
 
   expect(fetchMock.mock.calls[0]?.[1]?.keepalive).toBe(true);
+});
+
+test("splits a large batch while the page is hidden, so the parts that fit arrive with keepalive", async () => {
+  setHidden();
+  const respond = holdResponses();
+  const items = Array.from({ length: 16 }, () => randomText(8 * 1024));
+
+  const exported = exportItems(
+    new OtlpJsonExporter(URL_, undefined, serializer),
+    items,
+  );
+  // About 96 KiB compressed, in parts of at most 16 KiB
+  await vi.waitFor(() => {
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(6);
+  });
+  respond();
+  expect(await exported).toBe(0);
+
+  const calls = fetchMock.mock.calls.map(([, init]) => init);
+  const sent = await Promise.all(calls.map((init) => gunzip(init?.body)));
+  expect(sent.flatMap((body) => JSON.parse(body) as string[])).toEqual(items);
+  for (const init of calls) {
+    expect((init?.body as Uint8Array).byteLength).toBeLessThanOrEqual(
+      16 * 1024,
+    );
+  }
+  // The parts within the 60 KiB budget use keepalive, the rest go without it
+  const keepalive = calls.filter((init) => init?.keepalive).length;
+  expect(keepalive).toBeGreaterThan(0);
+  expect(keepalive).toBeLessThan(calls.length);
+});
+
+test("sends a large batch whole while the page is visible", async () => {
+  await exportItems(
+    new OtlpJsonExporter(URL_, undefined, serializer),
+    Array.from({ length: 16 }, () => randomText(8 * 1024)),
+  );
+
+  expect(fetchMock).toHaveBeenCalledOnce();
 });
 
 test("reports success and settles after a collector never answers", async () => {

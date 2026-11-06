@@ -345,6 +345,12 @@ export class Recorder {
         },
       });
     });
+
+    // A replay cannot play without its full snapshot. Sent now rather than after the 5 s batch
+    // delay, so a short visit keeps its replay and the final flush does not have to carry it.
+    if (event.type === EVENT_FULL_SNAPSHOT) {
+      void this.#provider.forceFlush().catch(() => undefined);
+    }
   }
 
   #onThrottled(): void {
