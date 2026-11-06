@@ -5,9 +5,11 @@
 ### Changed
 
 - Traces and logs are sent gzip-compressed, as replay already was, so several times more telemetry
-  fits in what a closing page can still send. A proxy in front of the collector must forward the
-  body and its `Content-Encoding` header unchanged. The OpenTelemetry Collector and ClickStack
-  accept gzip.
+  fits in what a closing page can still send. A collector on another origin must allow the
+  `Content-Encoding` request header: for the OpenTelemetry Collector, list `content-encoding` in
+  `cors.allowed_headers`, or use `"*"`. Otherwise the browser blocks every trace and log export.
+  ClickStack's collector allows all headers. A proxy in front of the collector must forward the
+  body and its `Content-Encoding` header unchanged.
 - Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
 
 ### Fixed
@@ -19,10 +21,10 @@
   on the upstream OTLP/JSON serializers: batches of up to 16 records, gzip-compressed, with
   `keepalive` only while the page is hidden, so exports during the burst leave the budget to the
   final flush. All exporters share one budget, replay included. A batch still exceeds it when its
-  records average more than about 3.8 KB compressed.
-- Export requests, replay included, give up after 10 seconds. A collector that accepted the
-  connection and never answered kept them open, which stopped log export, and with a same-origin
-  endpoint they could take up the browser's connections to the page's own server.
+  records average more than about 3.8 KB compressed, or less while replay uses its share.
+- Replay requests give up after 10 seconds, as trace and log requests already did. A collector
+  that accepted the connection and never answered held replay requests open, which stopped replay
+  export.
 - Replay requests showed as failed in DevTools, because the replay exporter cancelled each
   response body. It now reads it.
 

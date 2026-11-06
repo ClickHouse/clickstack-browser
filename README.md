@@ -168,8 +168,8 @@ Requests to the page's origin and to `traceOrigins` carry the `traceparent`, `tr
 `baggage` headers, so backend traces join the browser's. Each backend in `traceOrigins` must allow
 these headers in CORS (`Access-Control-Allow-Headers`), or its requests fail.
 
-A collector that the page sends to directly must allow the page's origin. ClickStack's collector
-allows all origins; your own collector needs:
+A collector that the page sends to directly must allow the page's origin and request headers.
+ClickStack's collector allows all of them; your own collector needs:
 
 ```yaml
 receivers:
@@ -179,6 +179,7 @@ receivers:
         endpoint: 0.0.0.0:4318
         cors:
           allowed_origins: ["https://example-app.clickhouse.com"]
+          # A list instead must include authorization, content-type and content-encoding
           allowed_headers: ["*"]
 ```
 
