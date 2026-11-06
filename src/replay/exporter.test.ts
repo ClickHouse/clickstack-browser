@@ -169,7 +169,7 @@ test("posts gzip-compressed OTLP/JSON with the key, outside any trace", async ()
   expect(url).toBe(URL_);
   expect(init).toMatchObject({
     method: "POST",
-    keepalive: true,
+    keepalive: false,
     headers: {
       authorization: "key-1",
       "content-type": "application/json",

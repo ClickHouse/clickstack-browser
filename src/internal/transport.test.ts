@@ -40,10 +40,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  Object.defineProperty(document, "visibilityState", {
-    configurable: true,
-    value: "visible",
-  });
   vi.unstubAllGlobals();
   vi.useRealTimers();
   context.disable();
@@ -101,15 +97,7 @@ function holdResponses(): () => void {
   return respond;
 }
 
-function setHidden(): void {
-  Object.defineProperty(document, "visibilityState", {
-    configurable: true,
-    value: "hidden",
-  });
-}
-
 test("uses keepalive only within the limits shared by all requests", async () => {
-  setHidden();
   const respond = holdResponses();
   const big = new Uint8Array(40 * 1024);
 
@@ -132,32 +120,7 @@ test("uses keepalive only within the limits shared by all requests", async () =>
   ]);
 });
 
-test("while the page is visible, uses keepalive only within a small part of the limits", async () => {
-  const respond = holdResponses();
-
-  const sent = [
-    post(URL_, {}, new Uint8Array(17 * 1024), true),
-    ...Array.from({ length: 4 }, () => post(URL_, {}, BODY, true)),
-  ];
-  // The final flush still has the rest
-  setHidden();
-  sent.push(post(URL_, {}, new Uint8Array(40 * 1024), true));
-  respond();
-  await Promise.all(sent);
-
-  // Over 16 KiB, then 3 requests at most
-  expect(fetchMock.mock.calls.map(([, init]) => init?.keepalive)).toEqual([
-    false,
-    true,
-    true,
-    true,
-    false,
-    true,
-  ]);
-});
-
 test("gives up after 10 s without sending again, and releases the limits", async () => {
-  setHidden();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   // A collector that never answers
   fetchMock.mockImplementation(

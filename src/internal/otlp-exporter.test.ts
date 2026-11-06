@@ -82,7 +82,7 @@ function holdResponses(): () => void {
   return respond;
 }
 
-test("posts the gzip-compressed serialized body with the key", async () => {
+test("posts the gzip-compressed serialized body with the key, without keepalive while visible", async () => {
   expect(
     await exportItems(new OtlpJsonExporter(URL_, "key-1", serializer), ["a"]),
   ).toBe(0);
@@ -91,6 +91,7 @@ test("posts the gzip-compressed serialized body with the key", async () => {
   expect(url).toBe(URL_);
   expect(init).toMatchObject({
     method: "POST",
+    keepalive: false,
     headers: {
       authorization: "key-1",
       "content-type": "application/json",

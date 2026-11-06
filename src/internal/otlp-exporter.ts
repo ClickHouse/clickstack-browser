@@ -14,10 +14,9 @@ const KEEPALIVE_PART_BYTES = 16 * 1024;
  * Upstream's browser transport sets `keepalive` on every request that fits its limits and never
  * reads the response, which Chromium counts against the page's 64 KiB budget until then. With small
  * batches, exports during a burst use up the budget and the final flush when the user leaves finds
- * no room. This exporter reads every response, and while the page is visible uses `keepalive`
- * only within a small part of the budget (see `post`). While the page is hidden it splits a batch
- * over 16 KiB compressed, so the parts that fit the budget arrive even when the whole would not.
- * Failed exports are not retried.
+ * no room. This exporter asks for `keepalive` only while the page is hidden, the one time a request
+ * has to outlive the page, and then splits a batch over 16 KiB compressed, so the parts that fit
+ * the budget arrive even when the whole would not. Failed exports are not retried.
  *
  * @internal
  */
@@ -88,12 +87,12 @@ export class OtlpJsonExporter<T> {
       return;
     }
 
-    // The final flush, where the budget limits what arrives. Read after compressing, so a page
-    // hidden while the body was compressed still gets the split.
+    // Only a hidden page needs keepalive, the one time the budget limits what arrives. Read after
+    // compressing, so a page hidden while the body was compressed still gets keepalive and the split.
     const hidden = document.visibilityState === "hidden";
     const bodies = hidden ? await this.#split(items, body) : [body];
 
-    await Promise.all(bodies.map((part) => this.#post(part)));
+    await Promise.all(bodies.map((part) => this.#post(part, hidden)));
   }
 
   async #compress(items: T[]): Promise<Uint8Array<ArrayBuffer> | undefined> {
@@ -127,9 +126,9 @@ export class OtlpJsonExporter<T> {
     return bodies;
   }
 
-  async #post(body: Uint8Array<ArrayBuffer>): Promise<void> {
+  async #post(body: Uint8Array<ArrayBuffer>, hidden: boolean): Promise<void> {
     try {
-      const response = await post(this.#url, this.#headers, body, true);
+      const response = await post(this.#url, this.#headers, body, hidden);
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }

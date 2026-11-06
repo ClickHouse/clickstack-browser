@@ -237,12 +237,7 @@ export class ReplayExporter implements LogRecordExporter {
     }
 
     try {
-      const response = await post(
-        this.#url,
-        this.#headers,
-        body,
-        !hidden || withinShare,
-      );
+      const response = await post(this.#url, this.#headers, body, withinShare);
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }

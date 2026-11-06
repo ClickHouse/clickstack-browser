@@ -12,13 +12,6 @@ const KEEPALIVE_MAX_REQUESTS = 9;
 let keepaliveBytes = 0;
 let keepaliveRequests = 0;
 
-// The part of that budget requests made while the page is visible may use, so one still in flight
-// when the tab closes arrives, and the rest is left to the final flush
-const VISIBLE_MAX_BYTES = 16 * 1024;
-const VISIBLE_MAX_REQUESTS = 3;
-let visibleBytes = 0;
-let visibleRequests = 0;
-
 /**
  * Compresses `data` with the browser's gzip `CompressionStream`.
  *
@@ -63,17 +56,16 @@ export async function gzip(
  * Posts an OTLP request body outside any trace and reads the response.
  *
  * @remarks
- * Keepalive is used when allowed and the limits shared by all exporters allow: while the page is
- * visible, only within a small part of them, and while it is hidden, within all of them. A
- * keepalive request the browser rejects anyway is sent once more without it; it still arrives
- * unless the page is unloading. Chromium counts a keepalive request against the page's budget until its
+ * Keepalive is used when asked for and the limits shared by all exporters allow. A keepalive
+ * request the browser rejects anyway is sent once more without it; it still arrives unless the
+ * page is unloading. Chromium counts a keepalive request against the page's budget until its
  * response body is read, so the limits are released only then; cancelling the body instead would
  * show every export as failed in DevTools. The request and the read are aborted after 10 s.
  *
  * @param url - The absolute OTLP/HTTP URL.
  * @param headers - The request headers.
  * @param body - The request body.
- * @param allowKeepalive - Whether the request may use keepalive at all.
+ * @param outlivePage - Whether the request should use keepalive, because the page is hidden.
  * @returns The response, with its body read.
  * @internal
  */
@@ -81,24 +73,15 @@ export async function post(
   url: string,
   headers: Record<string, string>,
   body: Uint8Array<ArrayBuffer>,
-  allowKeepalive: boolean,
+  outlivePage: boolean,
 ): Promise<Response> {
-  const visible = document.visibilityState !== "hidden";
   const keepalive =
-    allowKeepalive &&
+    outlivePage &&
     keepaliveBytes + body.byteLength <= KEEPALIVE_MAX_BYTES &&
-    keepaliveRequests < KEEPALIVE_MAX_REQUESTS &&
-    (!visible ||
-      (visibleBytes + body.byteLength <= VISIBLE_MAX_BYTES &&
-        visibleRequests < VISIBLE_MAX_REQUESTS));
-  const countedVisible = keepalive && visible;
+    keepaliveRequests < KEEPALIVE_MAX_REQUESTS;
   if (keepalive) {
     keepaliveBytes += body.byteLength;
     keepaliveRequests++;
-  }
-  if (countedVisible) {
-    visibleBytes += body.byteLength;
-    visibleRequests++;
   }
 
   const controller = new AbortController();
@@ -136,10 +119,6 @@ export async function post(
     if (keepalive) {
       keepaliveBytes -= body.byteLength;
       keepaliveRequests--;
-    }
-    if (countedVisible) {
-      visibleBytes -= body.byteLength;
-      visibleRequests--;
     }
   }
 }
