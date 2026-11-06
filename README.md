@@ -68,7 +68,8 @@ init({
 `OTEL_EXPORTER_OTLP_ENDPOINT`, without `/v1/traces`. With ClickStack, it is your service's collector URL.
 
 Call `init` once per page load, at the top level of your entry module (`instrumentation-client.ts`
-in Next.js, `src/main.ts` in Vite), not in a component effect.
+in Next.js, `src/main.ts` in Vite), not in a component effect. Replays mask all text and form values
+by default. Set `maskAllText: false` to see the text ([Privacy](#privacy)).
 
 | Option               | Default   | Meaning                                                                                                                                                                                                   |
 | -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -167,8 +168,8 @@ Requests to the page's origin and to `traceOrigins` carry the `traceparent`, `tr
 `baggage` headers, so backend traces join the browser's. Each backend in `traceOrigins` must allow
 these headers in CORS (`Access-Control-Allow-Headers`), or its requests fail.
 
-A collector that the page sends to directly must allow the page's origin. ClickStack's collector
-allows all origins; your own collector needs:
+A collector that the page sends to directly must allow the page's origin and request headers.
+ClickStack's collector allows all of them; your own collector needs:
 
 ```yaml
 receivers:
@@ -178,8 +179,14 @@ receivers:
         endpoint: 0.0.0.0:4318
         cors:
           allowed_origins: ["https://example-app.clickhouse.com"]
+          # A list instead must include authorization, content-type and content-encoding
           allowed_headers: ["*"]
+          # Without it, Chrome repeats the preflight every 5 s; 2 hours is its maximum
+          max_age: 7200
 ```
+
+A proxy in front of the collector must forward the request body and its `Content-Encoding` header
+unchanged.
 
 ## Using the upstream SDK directly
 
@@ -253,8 +260,8 @@ const replay = startReplay({
 - Log events: `browser.navigation`, `browser.user_action.click`, `browser.web_vital`,
   `browser.console`, `exception`, `browser.navigation_timing` and `browser.resource_timing`. Fetch
   and XHR requests and long tasks are spans.
-- Replay: gzip-compressed log records with the scope `rum.rr-web`, sent to the logs URL. A collector
-  between the page and ClickStack must keep their attributes unchanged.
+- Replay: log records with the scope `rum.rr-web`, sent to the logs URL. A collector between the
+  page and ClickStack must keep their attributes unchanged.
 
 ## Lifecycle
 
@@ -263,9 +270,9 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent in batches, and when the page is hidden. Browsers limit what a closing page
-  can still send to 64 KiB in total, so the last part of a long replay can be lost when the user
-  leaves.
+- Telemetry is sent as gzip-compressed OTLP/JSON every 5 seconds and when the page is hidden.
+  Failed requests are not retried. A closing page can send only about 64 KiB, so after a burst of
+  activity or a long replay, the last records can be lost when the user leaves.
 - `shutdown()` is final: a later `init` on the page is ignored. In React StrictMode, an `init` in
   an effect with `shutdown` in its cleanup ends telemetry for the page.
 

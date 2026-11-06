@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0
+
+### Upgrade notes
+
+- Traces and logs are now sent gzip-compressed, like replay. A collector on another origin must
+  allow the `Content-Encoding` request header, or the browser blocks every export. With the
+  OpenTelemetry Collector, set `cors.allowed_headers` to `["*"]`, or list `content-type`,
+  `content-encoding` and, if you set `apiKey`, `authorization`. ClickStack's collector already
+  allows all headers.
+- A proxy in front of the collector must forward the request body and its `Content-Encoding`
+  header unchanged.
+
+### Changed
+
+- Logs and replay are sent every 5 seconds, like spans, instead of every second. Active pages send
+  fewer requests, and logs and replay arrive up to 5 seconds later. A page with a large replay
+  snapshot that is left within 5 seconds can lose its replay.
+- Failed trace and log exports are no longer retried, like replay. Each exporter logs one warning.
+
+### Fixed
+
+- With `init`, traces and logs were lost when the user left soon after a burst of activity, such
+  as a page load with many requests. Batches now hold at most 64 records and use `keepalive` only
+  while the page is hidden, so the last batch fits in what a closing page can still send. That is
+  about 64 KiB for traces, logs and replay together, so some loss on leaving is still possible.
+- Replay requests now give up after 10 seconds, like trace and log requests. A collector that
+  never answered could stop replay and, with a same-origin endpoint, block the page's own requests.
+- Replay requests no longer show as failed in DevTools.
+
 ## 1.1.0
 
 ### Added

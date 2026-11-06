@@ -1,6 +1,6 @@
 {
   "name": "@clickhouse/clickstack-browser",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": false,
   "description": "OpenTelemetry browser RUM and session replay for ClickStack and ClickHouse Observability",
   "keywords": [
@@ -63,8 +63,10 @@
     "@opentelemetry/browser-instrumentation": "^0.9.0",
     "@opentelemetry/core": "^2.12.0",
     "@opentelemetry/instrumentation-long-task": "^0.67.0",
+    "@opentelemetry/otlp-transformer": "^0.223.0",
     "@opentelemetry/resources": "^2.12.0",
     "@opentelemetry/sdk-logs": "^0.223.0",
+    "@opentelemetry/sdk-trace": "^2.12.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "@rrweb/record": "~2.2.0"
   },
@@ -78,7 +80,6 @@
     "@eslint/js": "10.0.1",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/browser-sdk": "0.6.0",
-    "@opentelemetry/sdk-trace": "2.12.0",
     "@playwright/test": "1.64.1",
     "@rrweb/types": "2.2.0",
     "@size-limit/preset-small-lib": "14.2.0",
@@ -122,7 +123,7 @@
         "@opentelemetry"
       ],
       "gzip": true,
-      "limit": "30 kB"
+      "limit": "31 kB"
     },
     {
       "name": "npm: ./replay",
