@@ -123,7 +123,7 @@
         "@opentelemetry"
       ],
       "gzip": true,
-      "limit": "30 kB"
+      "limit": "31 kB"
     },
     {
       "name": "npm: ./replay",

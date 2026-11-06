@@ -82,7 +82,7 @@ function holdResponses(): () => void {
   return respond;
 }
 
-test("posts the gzip-compressed serialized body with the key, without keepalive while visible", async () => {
+test("posts the gzip-compressed serialized body with the key", async () => {
   expect(
     await exportItems(new OtlpJsonExporter(URL_, "key-1", serializer), ["a"]),
   ).toBe(0);
@@ -91,7 +91,6 @@ test("posts the gzip-compressed serialized body with the key, without keepalive 
   expect(url).toBe(URL_);
   expect(init).toMatchObject({
     method: "POST",
-    keepalive: false,
     headers: {
       authorization: "key-1",
       "content-type": "application/json",
@@ -107,6 +106,31 @@ test("asks for keepalive while the page is hidden", async () => {
   await exportItems(new OtlpJsonExporter(URL_, undefined, serializer), ["a"]);
 
   expect(fetchMock.mock.calls[0]?.[1]?.keepalive).toBe(true);
+});
+
+test("an export that starts while the page is visible and is hidden during compression still gets keepalive and the split", async () => {
+  const respond = holdResponses();
+  const items = Array.from({ length: 4 }, () => randomText(8 * 1024));
+
+  const exported = exportItems(
+    new OtlpJsonExporter(URL_, undefined, serializer),
+    items,
+  );
+  // Hidden after the export started and before the body is compressed
+  setHidden();
+  await vi.waitFor(() => {
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+  respond();
+  expect(await exported).toBe(0);
+
+  const calls = fetchMock.mock.calls.map(([, init]) => init);
+  expect(calls.every((init) => init?.keepalive)).toBe(true);
+  for (const init of calls) {
+    expect((init?.body as Uint8Array).byteLength).toBeLessThanOrEqual(
+      16 * 1024,
+    );
+  }
 });
 
 test("splits a large batch while the page is hidden, so the parts that fit arrive with keepalive", async () => {

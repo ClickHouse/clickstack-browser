@@ -14,9 +14,10 @@ const KEEPALIVE_PART_BYTES = 16 * 1024;
  * Upstream's browser transport sets `keepalive` on every request that fits its limits and never
  * reads the response, which Chromium counts against the page's 64 KiB budget until then. With small
  * batches, exports during a burst use up the budget and the final flush when the user leaves finds
- * no room. This exporter asks for `keepalive` only while the page is hidden, the one time a request
- * has to outlive the page, and then splits a batch over 16 KiB compressed, so the parts that fit
- * the budget arrive even when the whole would not. Failed exports are not retried.
+ * no room. This exporter reads every response, and while the page is visible uses `keepalive`
+ * only within a small part of the budget (see `post`). While the page is hidden it splits a batch
+ * over 16 KiB compressed, so the parts that fit the budget arrive even when the whole would not.
+ * Failed exports are not retried.
  *
  * @internal
  */
@@ -82,41 +83,53 @@ export class OtlpJsonExporter<T> {
   }
 
   async #send(items: T[]): Promise<void> {
-    // Only a hidden page needs keepalive, the one time the budget limits what arrives
-    const hidden = document.visibilityState === "hidden";
-    const bodies = await this.#bodies(items, hidden);
-
-    await Promise.all(bodies.map((body) => this.#post(body, hidden)));
-  }
-
-  // The request bodies for the items, halving the items until each body fits KEEPALIVE_PART_BYTES
-  // when split is set. A single item that is still larger stays one body.
-  async #bodies(
-    items: T[],
-    split: boolean,
-  ): Promise<Uint8Array<ArrayBuffer>[]> {
-    const json = this.#serializer.serializeRequest(items);
-    if (json === undefined) {
-      return [];
+    const body = await this.#compress(items);
+    if (body === undefined) {
+      return;
     }
 
+    // The final flush, where the budget limits what arrives. Read after compressing, so a page
+    // hidden while the body was compressed still gets the split.
+    const hidden = document.visibilityState === "hidden";
+    const bodies = hidden ? await this.#split(items, body) : [body];
+
+    await Promise.all(bodies.map((part) => this.#post(part)));
+  }
+
+  async #compress(items: T[]): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    const json = this.#serializer.serializeRequest(items);
+
     // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
-    const body = await gzip(json as Uint8Array<ArrayBuffer>);
-    if (!split || body.byteLength <= KEEPALIVE_PART_BYTES || items.length < 2) {
+    return json === undefined
+      ? undefined
+      : gzip(json as Uint8Array<ArrayBuffer>);
+  }
+
+  // The items' body, and while it is over KEEPALIVE_PART_BYTES, the bodies of each half of the items.
+  // A single item that is still larger stays one body.
+  async #split(
+    items: T[],
+    body: Uint8Array<ArrayBuffer>,
+  ): Promise<Uint8Array<ArrayBuffer>[]> {
+    if (body.byteLength <= KEEPALIVE_PART_BYTES || items.length < 2) {
       return [body];
     }
 
     const half = Math.ceil(items.length / 2);
+    const bodies: Uint8Array<ArrayBuffer>[] = [];
+    for (const part of [items.slice(0, half), items.slice(half)]) {
+      const partBody = await this.#compress(part);
+      if (partBody !== undefined) {
+        bodies.push(...(await this.#split(part, partBody)));
+      }
+    }
 
-    return [
-      ...(await this.#bodies(items.slice(0, half), true)),
-      ...(await this.#bodies(items.slice(half), true)),
-    ];
+    return bodies;
   }
 
-  async #post(body: Uint8Array<ArrayBuffer>, hidden: boolean): Promise<void> {
+  async #post(body: Uint8Array<ArrayBuffer>): Promise<void> {
     try {
-      const response = await post(this.#url, this.#headers, body, hidden);
+      const response = await post(this.#url, this.#headers, body, true);
       if (!response.ok) {
         this.#warn(`HTTP ${String(response.status)}`);
       }

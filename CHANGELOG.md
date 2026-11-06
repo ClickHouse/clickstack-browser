@@ -11,10 +11,11 @@
   ClickStack's collector allows all headers. A proxy in front of the collector must forward the
   body and its `Content-Encoding` header unchanged.
 - Logs and replay are sent every 5 seconds, as spans already were, instead of every second, so an
-  active page sends fewer requests. In exchange, logs arrive up to 5 seconds later, a request lost
-  when the tab closes can carry up to 5 seconds of logs, and logs resume up to about 12 seconds
-  after a collector outage. Replay's full snapshots, without which a replay cannot play, are still
-  sent at once, so short visits keep their replay.
+  active page sends fewer requests. In exchange, logs and replay arrive up to 5 seconds later, a
+  request lost when the tab closes can carry up to 5 seconds of logs, and logs resume up to about
+  15 seconds after a collector that stopped answering is back (the 10-second request timeout plus
+  the 5-second delay). A visit shorter than that keeps its replay through the final flush when the
+  page is hidden, unless the replay's full snapshot is over 32 KiB compressed.
 - Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
 
 ### Fixed
@@ -23,14 +24,15 @@
   telemetry, such as a page load with many requests. Upstream sent batches of up to 512 records,
   which grew past what a closing page can send with `keepalive` (64 KiB, shared by traces and
   logs) and were then lost whole. Traces and logs now go through this package's own exporter, built
-  on the upstream OTLP/JSON serializers: batches of up to 64 records, gzip-compressed, with
-  `keepalive` only while the page is hidden, so exports during the burst leave the budget to the
-  final flush. All exporters share one budget, replay included. Everything pending when the page
-  is hidden, traces, logs and replay together, must fit in about 60 KiB compressed. Past that, a
-  batch is split into parts of at most 16 KiB, and the parts beyond the budget are sent without
-  keepalive and are lost if the page closes. An export already in flight without keepalive when
-  the tab closes is lost too, and the final flush of logs and replay waits for it, so a close
-  during steady traffic can still lose the last few seconds of logs.
+  on the upstream OTLP/JSON serializers: batches of up to 64 records, gzip-compressed, and every
+  response read, so `keepalive` is released quickly. All exporters share one budget, replay
+  included. While the page is visible, requests use `keepalive` only within 16 KiB and 3 requests
+  of it, so one in flight when the tab closes still arrives and the rest is left to the final
+  flush. Everything pending when the page is hidden, traces, logs and replay together, must fit
+  in what is left, about 60 KiB compressed in total. While the page is hidden, a trace or log batch
+  over 16 KiB compressed is split into parts of at most 16 KiB, and replay into parts of up to 32
+  KiB; a single record larger than a part is sent as one. The parts beyond the budget are sent
+  without keepalive and are lost if the page closes.
 - Replay requests give up after 10 seconds, as trace and log requests already did. A collector
   that accepted the connection and never answered held replay requests open, which stopped replay
   export and, with a same-origin endpoint, stalled the page's own requests to its server.

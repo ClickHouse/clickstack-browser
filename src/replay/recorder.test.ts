@@ -296,27 +296,6 @@ test("a shutdown before recording starts leaves rrweb off", async () => {
   }).toThrow();
 });
 
-test("sends each full snapshot at once instead of waiting for the batch delay", async () => {
-  const h = setup();
-  const forceFlush = vi.spyOn(h.provider, "forceFlush");
-  h.recorder.start();
-
-  await vi.waitFor(() => {
-    expect(types(h.records)).toContain(2);
-  });
-  expect(forceFlush).toHaveBeenCalledOnce();
-
-  await mutate();
-
-  expect(forceFlush).toHaveBeenCalledOnce();
-
-  h.recorder.pause();
-  h.recorder.resume();
-  await tick();
-
-  expect(forceFlush).toHaveBeenCalledTimes(2);
-});
-
 test("pause drops events and resume starts again with a full snapshot", async () => {
   const h = await started();
   const before = h.records.length;
