@@ -158,10 +158,10 @@ export interface ClickStackBrowserOptions {
 }
 
 // Upstream sends up to 512 records per request, and a closing page can still send only about
-// 60 KiB with keepalive, so a large batch pending at unload is lost whole. Batches of 16 go out as
-// soon as they fill up, which leaves less pending. A record count does not bound bytes, so very
-// large records can still exceed the limit.
-const MAX_EXPORT_BATCH_SIZE = 16;
+// 60 KiB with keepalive, so a large batch pending at unload is lost whole. 64 records are a few KiB
+// after gzip. A record count does not bound bytes, so very large records can still exceed the
+// limit. Logs wait 5 s like spans, instead of upstream's 1 s, so an active page sends fewer requests.
+const BATCH_CONFIG = { maxExportBatchSize: 64, scheduledDelayMillis: 5000 };
 
 // Kept in step with ClickStackBrowserOptions by the type check, for the unknown-option warning
 const OPTION_NAMES = new Set(
@@ -401,7 +401,7 @@ async function start(
             options.apiKey,
             JsonLogsSerializer,
           ),
-          maxExportBatchSize: MAX_EXPORT_BATCH_SIZE,
+          ...BATCH_CONFIG,
         }),
       ],
     },
@@ -417,7 +417,7 @@ async function start(
             options.apiKey,
             JsonTraceSerializer,
           ),
-          maxExportBatchSize: MAX_EXPORT_BATCH_SIZE,
+          ...BATCH_CONFIG,
         }),
       ],
     },

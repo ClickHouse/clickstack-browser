@@ -10,6 +10,8 @@
   `cors.allowed_headers`, or use `"*"`. Otherwise the browser blocks every trace and log export.
   ClickStack's collector allows all headers. A proxy in front of the collector must forward the
   body and its `Content-Encoding` header unchanged.
+- Logs and replay are sent every 5 seconds, as spans already were, instead of every second, so an
+  active page sends fewer requests.
 - Failed trace and log exports are not retried, as for replay. Each exporter logs one warning.
 
 ### Fixed
@@ -18,10 +20,10 @@
   telemetry, such as a page load with many requests. Upstream sent batches of up to 512 records,
   which grew past what a closing page can send with `keepalive` (64 KiB, shared by traces and
   logs) and were then lost whole. Traces and logs now go through this package's own exporter, built
-  on the upstream OTLP/JSON serializers: batches of up to 16 records, gzip-compressed, with
+  on the upstream OTLP/JSON serializers: batches of up to 64 records, gzip-compressed, with
   `keepalive` only while the page is hidden, so exports during the burst leave the budget to the
   final flush. All exporters share one budget, replay included. A batch still exceeds it when its
-  records average more than about 3.8 KB compressed, or less while replay uses its share.
+  records average more than about 1 KB compressed, or less while replay uses its share.
 - Replay requests give up after 10 seconds, as trace and log requests already did. A collector
   that accepted the connection and never answered held replay requests open, which stopped replay
   export.

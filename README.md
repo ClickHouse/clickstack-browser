@@ -265,8 +265,8 @@ const replay = startReplay({
   `init` are kept. Only the first `init` on a page counts. Calling it later, for example after
   fetching runtime configuration, still records the page's navigation, navigation timing and
   resource timing.
-- Telemetry is sent as gzip-compressed OTLP/JSON in batches of up to 16 records, and when the page
-  is hidden. A proxy in front of the collector must forward the body and its `Content-Encoding`
+- Telemetry is sent as gzip-compressed OTLP/JSON every 5 seconds, when a batch reaches 64 records,
+  and when the page is hidden. A proxy in front of the collector must forward the body and its `Content-Encoding`
   header unchanged. Browsers limit what a closing page can still send to 64 KiB in total, so after
   a burst of activity, such as a page load with many requests, or during a long replay, the last
   records can be lost when the user leaves. Failed requests are not retried, and requests give up

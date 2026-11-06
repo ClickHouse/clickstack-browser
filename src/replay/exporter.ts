@@ -284,6 +284,7 @@ export function createReplayProvider(
     processors: [
       new BatchLogRecordProcessor({
         exporter: new ReplayExporter(url, apiKey),
+        scheduledDelayMillis: 5000,
       }),
     ],
   });

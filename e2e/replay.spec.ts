@@ -110,8 +110,8 @@ test("records a small page and sends decodable rr-web records under the page ses
       (globalThis as unknown as PageGlobal).ClickStack.getSessionId() !== null,
   );
 
-  // Past the batch delay, so the input below is left for the final flush on leaving the page.
-  await page.waitForTimeout(2500);
+  // Past the 5 s batch delay, so the input below is left for the final flush on leaving the page.
+  await page.waitForTimeout(6000);
   await page.fill("input", "typed-secret");
   await page.click("button");
 
