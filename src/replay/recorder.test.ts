@@ -90,6 +90,8 @@ async function started(
 
 const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
+const eventNumber = (record: ReadableLogRecord | undefined): number =>
+  record?.attributes["rr-web.event"] as number;
 const types = (records: ReadableLogRecord[]): number[] =>
   records.map((r) => (JSON.parse(r.body as string) as { type: number }).type);
 const bodies = (records: ReadableLogRecord[]): string =>
@@ -134,19 +136,20 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-test("opens the session with a meta event and a full snapshot, numbered from 1, all masked", async () => {
+test("opens the session with a meta event and a full snapshot, numbered in order, all masked", async () => {
   const h = await started();
   await mutate();
 
   expect(types(h.records).slice(0, 3)).toEqual([4, 2, 3]);
 
+  const first = eventNumber(h.records[0]);
   h.records.forEach((r, i) => {
     expect(r.attributes).toEqual({
       "session.id": "session-a",
-      "rr-web.event": i + 1,
+      "rr-web.event": first + i,
       "rr-web.chunk": 1,
       "rr-web.total-chunks": 1,
-      "rr-web.offset": i + 1,
+      "rr-web.offset": first + i,
     });
   });
 
@@ -185,6 +188,7 @@ test("passes the page URL in the meta event through sanitizeUrl", async () => {
 test("splits a large event into chunks that share its number and timestamp", async () => {
   const h = await started();
   const before = h.records.length;
+  const first = eventNumber(h.records[0]);
 
   document
     .querySelector("p")
@@ -197,10 +201,10 @@ test("splits a large event into chunks that share its number and timestamp", asy
 
   chunks.forEach((r, i) => {
     expect(r.attributes).toMatchObject({
-      "rr-web.event": before + 1,
+      "rr-web.event": first + before,
       "rr-web.chunk": i + 1,
       "rr-web.total-chunks": chunks.length,
-      "rr-web.offset": before + i + 1,
+      "rr-web.offset": first + before + i,
     });
 
     expect(r.hrTime).toEqual(chunks[0]?.hrTime);
@@ -209,9 +213,10 @@ test("splits a large event into chunks that share its number and timestamp", asy
   expect((JSON.parse(bodies(chunks)) as { type: number }).type).toBe(3);
 });
 
-test("a new session in a visible tab starts at the first user input, numbered from 1", async () => {
+test("a new session in a visible tab starts at the first user input, numbered above the last", async () => {
   const h = await started();
   const before = h.records.length;
+  const last = eventNumber(h.records.at(-1));
 
   h.rotate({ id: "session-b", startTimestamp: Date.now() });
 
@@ -225,11 +230,21 @@ test("a new session in a visible tab starts at the first user input, numbered fr
   const fresh = h.records.slice(before);
 
   expect(types(fresh).slice(0, 2)).toEqual([4, 2]);
-  expect(fresh[0]?.attributes).toMatchObject({
-    "session.id": "session-b",
-    "rr-web.event": 1,
-    "rr-web.offset": 1,
-  });
+  expect(fresh[0]?.attributes["session.id"]).toBe("session-b");
+  expect(eventNumber(fresh[0])).toBeGreaterThan(last);
+  expect(fresh[0]?.attributes["rr-web.offset"]).toBe(eventNumber(fresh[0]));
+});
+
+test("a later page load in the same session numbers its events above the earlier one's", async () => {
+  const earlier = await started();
+  await mutate();
+  const last = eventNumber(earlier.records.at(-1));
+  await earlier.recorder.shutdown();
+  await new Promise((resolve) => setTimeout(resolve, 2));
+
+  const later = await started();
+
+  expect(eventNumber(later.records[0])).toBeGreaterThan(last);
 });
 
 test("a new session in a hidden tab starts once the tab is visible", async () => {

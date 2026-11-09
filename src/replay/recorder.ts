@@ -202,8 +202,13 @@ export class Recorder {
   #enterSession(id: string, startTimestamp: number | undefined): void {
     this.#sessionId = id;
     this.#sessionStart = startTimestamp ?? Date.now();
-    this.#events = 0;
-    this.#offset = 0;
+    // Counted on from the time in microseconds, so a later page load in the same session numbers
+    // above this one: ClickStack joins chunks by event number, and a leftover chunk of an earlier
+    // page's event would otherwise be joined into a later event with the same number. The random
+    // part separates tabs that start in the same millisecond.
+    const base = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    this.#events = base;
+    this.#offset = base;
     this.#limiter.reset();
     this.#capReached =
       Date.now() - this.#sessionStart > MAX_REPLAY_PER_SESSION_MS;

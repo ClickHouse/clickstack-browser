@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+
+- A replay could fail to show a page in ClickStack after an earlier page in the same session was
+  left before its large snapshot was fully sent. ClickStack reported
+  `SyntaxError: Unexpected non-whitespace character after JSON`. Replay event numbers now continue
+  across page loads instead of restarting at 1, so ClickStack no longer joins a leftover piece of
+  the earlier snapshot into a later event.
+
 ## 1.2.0
 
 ### Upgrade notes

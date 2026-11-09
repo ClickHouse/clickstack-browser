@@ -163,7 +163,10 @@ test("records a small page and sends decodable rr-web records under the page ses
     }))
     .sort((a, b) => a.offset - b.offset);
 
-  expect(replay.map((r) => r.offset)).toEqual(replay.map((_, i) => i + 1));
+  const firstOffset = replay[0]?.offset ?? 0;
+  expect(replay.map((r) => r.offset - firstOffset)).toEqual(
+    replay.map((_, i) => i),
+  );
 
   const events = new Map<number, typeof replay>();
   for (const record of replay) {
