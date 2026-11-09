@@ -169,3 +169,22 @@ Page activity is recorded as upstream log events instead of spans, with semantic
 | `component`, `rum.*`, `hyperdx.browser.timezone`, `Synthetics-RunId`, `record init` and `visibility` spans | Not emitted                                                                                                       |
 
 The full list is under [What is emitted](../README.md#what-is-emitted).
+
+### ClickHouse Schema
+
+If you're self-hosting ClickHouse and trying to migrate to this module, you may need to add some columns/indices to improve your experience within ClickStack.
+The most important column that is now being used is `EventName` on the logs table, but there are other columns you can add for optimizing the queries dependent on `session.id`.
+
+See this example DDL:
+
+```
+ALTER TABLE otel_logs ADD COLUMN `EventName` String CODEC(ZSTD(3));
+
+ALTER TABLE otel_logs ADD COLUMN `__hdx_materialized_session.id` String MATERIALIZED LogAttributes['session.id'] CODEC(ZSTD(3));
+ALTER TABLE otel_logs ADD INDEX idx_session_id __hdx_materialized_session.id TYPE text(tokenizer = 'array');
+
+ALTER TABLE hyperdx_sessions ADD COLUMN `__hdx_materialized_session.id` String MATERIALIZED LogAttributes['session.id'] CODEC(ZSTD(3));
+ALTER TABLE hyperdx_sessions ADD INDEX idx_session_id __hdx_materialized_session.id TYPE text(tokenizer = 'array');
+```
+
+You should verify your version of ClickHouse supports text indices (26.2+), bloom filters could work as an alternative. After adding this column you may need to restart your OTel collector so it can detect the column's presence. For the latest schema you should check the ClickStack repository.

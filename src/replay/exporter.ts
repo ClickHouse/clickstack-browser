@@ -10,7 +10,7 @@ import {
   type LogRecordExporter,
   type ReadableLogRecord,
 } from "@opentelemetry/sdk-logs";
-import { gzip, post } from "../internal/transport.ts";
+import { compress, post } from "../internal/transport.ts";
 
 // Keeps requests far below the collector's default body limit
 const MAX_REQUEST_CHARS = 4 * 1024 * 1024;
@@ -131,7 +131,7 @@ function split(batch: Batch): [Batch, Batch] | undefined {
 }
 
 async function encode(batch: Batch): Promise<Uint8Array<ArrayBuffer>> {
-  return gzip(new TextEncoder().encode(toOtlpJson(batch)));
+  return compress(new TextEncoder().encode(toOtlpJson(batch)));
 }
 
 // Gzip bodies of at most KEEPALIVE_MAX_BYTES each, splitting the batch as needed. A single record
@@ -177,7 +177,6 @@ export class ReplayExporter implements LogRecordExporter {
     this.#headers = {
       ...(apiKey ? { authorization: apiKey } : {}),
       "content-type": "application/json",
-      "content-encoding": "gzip",
     };
   }
 

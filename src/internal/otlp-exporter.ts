@@ -1,6 +1,6 @@
 import { diag } from "@opentelemetry/api";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
-import { gzip, post } from "./transport.ts";
+import { compress, post } from "./transport.ts";
 
 const KEEPALIVE_PART_BYTES = 16 * 1024;
 
@@ -43,7 +43,6 @@ export class OtlpJsonExporter<T> {
     this.#headers = {
       ...(apiKey ? { authorization: apiKey } : {}),
       "content-type": "application/json",
-      "content-encoding": "gzip",
     };
     this.#serializer = serializer;
   }
@@ -98,7 +97,7 @@ export class OtlpJsonExporter<T> {
     // The serializers encode with TextEncoder, whose buffer is a plain ArrayBuffer
     return json === undefined
       ? undefined
-      : gzip(json as Uint8Array<ArrayBuffer>);
+      : compress(json as Uint8Array<ArrayBuffer>);
   }
 
   // The items' body, and while it is over KEEPALIVE_PART_BYTES, the bodies of each half of the items.

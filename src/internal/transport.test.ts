@@ -6,7 +6,7 @@ import {
 } from "@opentelemetry/api";
 import { isTracingSuppressed } from "@opentelemetry/core";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { gzip, post } from "./transport.ts";
+import { compress, post } from "./transport.ts";
 
 const URL_ = "https://example-collector.clickhouse.com/v1/logs";
 const BODY = new Uint8Array([1, 2, 3]);
@@ -45,15 +45,31 @@ afterEach(() => {
   context.disable();
 });
 
-test("gzip output decompresses to the input", async () => {
+test("compressed output decompresses to the input, and is sent with content-encoding", async () => {
   const text = "x".repeat(100_000);
-  const compressed = await gzip(new TextEncoder().encode(text));
+  const compressed = await compress(new TextEncoder().encode(text));
   const stream = new Blob([compressed])
     .stream()
     .pipeThrough(new DecompressionStream("gzip"));
 
   expect(compressed.byteLength).toBeLessThan(1000);
   expect(await new Response(stream).text()).toBe(text);
+
+  await post(URL_, { a: "b" }, compressed, false);
+  expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
+    a: "b",
+    "content-encoding": "gzip",
+  });
+});
+
+test("sends plain JSON where the browser has no CompressionStream", async () => {
+  vi.stubGlobal("CompressionStream", undefined);
+  const data = new TextEncoder().encode('{"a":1}');
+
+  expect(await compress(data)).toBe(data);
+
+  await post(URL_, { a: "b" }, data, false);
+  expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ a: "b" });
 });
 
 test("posts outside any trace and reads the response", async () => {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+
+- A replay could fail to show a page in ClickStack after an earlier page in the same session was
+  left before its large snapshot was fully sent. ClickStack reported
+  `SyntaxError: Unexpected non-whitespace character after JSON`. Replay event numbers no longer
+  restart at 1 on every page load, so ClickStack no longer joins a leftover piece of an earlier
+  page's snapshot into a later event, across tabs too.
+- Browsers without `CompressionStream` (Safari before 16.4, Firefox before 113) sent no telemetry
+  since 1.2.0, and no replay before it. They now send uncompressed OTLP/JSON.
+
 ## 1.2.0
 
 ### Upgrade notes
