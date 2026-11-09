@@ -176,6 +176,7 @@ If you're self-hosting ClickHouse and trying to migrate to this module, you may 
 The most important column that is now being used is `EventName` on the logs table, but there are other columns you can add for optimizing the queries dependent on `session.id`.
 
 See this example DDL:
+
 ```
 ALTER TABLE otel_logs ADD COLUMN `EventName` String CODEC(ZSTD(3));
 
