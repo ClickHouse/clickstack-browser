@@ -12,20 +12,27 @@ const KEEPALIVE_MAX_REQUESTS = 9;
 let keepaliveBytes = 0;
 let keepaliveRequests = 0;
 
+const canGzip = (): boolean => typeof CompressionStream === "function";
+
 /**
- * Compresses `data` with the browser's gzip `CompressionStream`.
+ * Compresses `data` with the browser's gzip `CompressionStream`, or returns it unchanged where the
+ * browser has none.
  *
  * @remarks
  * Reads the output with a reader loop. In Chromium, `new Response(stream).arrayBuffer()` does not
  * finish while the page is being hidden, which is exactly when the final batch is sent.
  *
  * @param data - The bytes to compress.
- * @returns The gzip bytes.
+ * @returns The gzip bytes, or `data` itself.
  * @internal
  */
-export async function gzip(
+export async function compress(
   data: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array<ArrayBuffer>> {
+  if (!canGzip()) {
+    return data;
+  }
+
   const stream = new CompressionStream("gzip");
   const writer = stream.writable.getWriter();
 
@@ -63,7 +70,8 @@ export async function gzip(
  * show every export as failed in DevTools. The request and the read are aborted after 10 s.
  *
  * @param url - The absolute OTLP/HTTP URL.
- * @param headers - The request headers.
+ * @param headers - The request headers, without `content-encoding`, which is added when the body
+ * is compressed.
  * @param body - The request body.
  * @param outlivePage - Whether the request should use keepalive, because the page is hidden.
  * @returns The response, with its body read.
@@ -95,7 +103,9 @@ export async function post(
     context.with(suppressTracing(context.active()), () =>
       fetch(url, {
         method: "POST",
-        headers,
+        headers: canGzip()
+          ? { ...headers, "content-encoding": "gzip" }
+          : headers,
         body,
         keepalive: withKeepalive,
         signal: controller.signal,

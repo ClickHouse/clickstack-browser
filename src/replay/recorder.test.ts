@@ -92,6 +92,8 @@ const tick = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 const eventNumber = (record: ReadableLogRecord | undefined): number =>
   record?.attributes["rr-web.event"] as number;
+const offset = (record: ReadableLogRecord | undefined): number =>
+  record?.attributes["rr-web.offset"] as number;
 const types = (records: ReadableLogRecord[]): number[] =>
   records.map((r) => (JSON.parse(r.body as string) as { type: number }).type);
 const bodies = (records: ReadableLogRecord[]): string =>
@@ -143,13 +145,14 @@ test("opens the session with a meta event and a full snapshot, numbered in order
   expect(types(h.records).slice(0, 3)).toEqual([4, 2, 3]);
 
   const first = eventNumber(h.records[0]);
+  const firstOffset = offset(h.records[0]);
   h.records.forEach((r, i) => {
     expect(r.attributes).toEqual({
       "session.id": "session-a",
       "rr-web.event": first + i,
       "rr-web.chunk": 1,
       "rr-web.total-chunks": 1,
-      "rr-web.offset": first + i,
+      "rr-web.offset": firstOffset + i,
     });
   });
 
@@ -189,6 +192,7 @@ test("splits a large event into chunks that share its number and timestamp", asy
   const h = await started();
   const before = h.records.length;
   const first = eventNumber(h.records[0]);
+  const firstOffset = offset(h.records[0]);
 
   document
     .querySelector("p")
@@ -204,7 +208,7 @@ test("splits a large event into chunks that share its number and timestamp", asy
       "rr-web.event": first + before,
       "rr-web.chunk": i + 1,
       "rr-web.total-chunks": chunks.length,
-      "rr-web.offset": first + before + i,
+      "rr-web.offset": firstOffset + before + i,
     });
 
     expect(r.hrTime).toEqual(chunks[0]?.hrTime);
@@ -213,10 +217,11 @@ test("splits a large event into chunks that share its number and timestamp", asy
   expect((JSON.parse(bodies(chunks)) as { type: number }).type).toBe(3);
 });
 
-test("a new session in a visible tab starts at the first user input, numbered above the last", async () => {
+test("a new session in a visible tab starts at the first user input, with new numbers and later offsets", async () => {
   const h = await started();
   const before = h.records.length;
-  const last = eventNumber(h.records.at(-1));
+  const numbers = new Set(h.records.map(eventNumber));
+  const lastOffset = offset(h.records.at(-1));
 
   h.rotate({ id: "session-b", startTimestamp: Date.now() });
 
@@ -231,20 +236,34 @@ test("a new session in a visible tab starts at the first user input, numbered ab
 
   expect(types(fresh).slice(0, 2)).toEqual([4, 2]);
   expect(fresh[0]?.attributes["session.id"]).toBe("session-b");
-  expect(eventNumber(fresh[0])).toBeGreaterThan(last);
-  expect(fresh[0]?.attributes["rr-web.offset"]).toBe(eventNumber(fresh[0]));
+  expect(numbers.has(eventNumber(fresh[0]))).toBe(false);
+  expect(offset(fresh[0])).toBeGreaterThan(lastOffset);
 });
 
-test("a later page load in the same session numbers its events above the earlier one's", async () => {
+test("a later page load in the same session uses new event numbers and later offsets", async () => {
   const earlier = await started();
   await mutate();
-  const last = eventNumber(earlier.records.at(-1));
+  const numbers = new Set(earlier.records.map(eventNumber));
+  const lastOffset = offset(earlier.records.at(-1));
   await earlier.recorder.shutdown();
   await new Promise((resolve) => setTimeout(resolve, 2));
 
   const later = await started();
 
-  expect(eventNumber(later.records[0])).toBeGreaterThan(last);
+  for (const record of later.records) {
+    expect(numbers.has(eventNumber(record))).toBe(false);
+  }
+  expect(offset(later.records[0])).toBeGreaterThan(lastOffset);
+});
+
+test("event numbers stay exact integers at the top of their random range", async () => {
+  vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
+  const h = await started();
+  await mutate();
+
+  for (const record of h.records) {
+    expect(Number.isSafeInteger(eventNumber(record))).toBe(true);
+  }
 });
 
 test("a new session in a hidden tab starts once the tab is visible", async () => {
